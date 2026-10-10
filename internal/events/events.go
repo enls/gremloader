@@ -1,24 +1,35 @@
 // Package events writes the activity log: one JSON object per line (JSON Lines), so "what did
 // GremLoader do and when" is something you can grep, tail, load into jq or query from the CLI.
 //
-// Every message and URL is passed through internal/redact first, so signed download links and
-// tokens never reach the file. The file rotates by size (5 MiB, keeping 3 by default) so it
+// Every message, result and URL is passed through internal/redact first, so signed download links
+// and credentials inside URLs never reach the file. A bare token in free text is not recognised:
+// callers must not log one. The file rotates by size (5 MiB, keeping 3 by default) so it
 // cannot grow without bound. Writing the log must never be the reason an install fails, so Emit
 // reports errors to the caller, who is expected to note and ignore them.
 package events
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/redact"
+)
+
+// Limits. A line is bounded when it is written so that the log can always be read back: Scan holds
+// one line at a time, up to maxLine, and skips anything longer.
+const (
+	maxLine  = 1 << 20
+	maxField = 16 << 10 // longest Msg or URL written; the rest is cut and marked
 )
 
 // Levels.
@@ -64,6 +75,7 @@ type Logger struct {
 	mu      sync.Mutex
 	path    string
 	f       *os.File
+	closed  bool // Close was called; distinguishes "shut down" from "reopen failed"
 	size    int64
 	maxSize int64
 	keep    int
@@ -99,7 +111,41 @@ func (l *Logger) open() error {
 		return fmt.Errorf("event log: %w", err)
 	}
 	l.f, l.size = f, st.Size()
+	if l.size > 0 && !endsWithNewline(l.path, l.size) {
+		// A crash (or a full disk) left a partial last line. Close it off so the next event starts
+		// on its own line instead of being glued to the fragment and lost with it.
+		n, _ := f.Write([]byte{'\n'})
+		l.size += int64(n)
+	}
 	return nil
+}
+
+// shorten cuts s to at most limit bytes (on a character boundary) and marks the cut.
+func shorten(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	const mark = "...[truncated]"
+	cut := max(limit-len(mark), 0)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + mark
+}
+
+// endsWithNewline reports whether the last byte of the file at path is a newline. Any doubt (it
+// cannot be read) counts as yes: a stray blank line is harmless, a failed open is not.
+func endsWithNewline(path string, size int64) bool {
+	f, err := os.Open(path) //nolint:gosec // the log file this Logger opened for append
+	if err != nil {
+		return true
+	}
+	defer func() { _ = f.Close() }()
+	var b [1]byte
+	if _, err := f.ReadAt(b[:], size-1); err != nil {
+		return true
+	}
+	return b[0] == '\n'
 }
 
 // Emit stamps (if the time is zero), redacts and appends one event.
@@ -111,8 +157,9 @@ func (l *Logger) Emit(e Event) error {
 	if e.Level == "" {
 		e.Level = Info
 	}
-	e.Msg = redact.Text(e.Msg)
-	e.URL = redact.URL(e.URL)
+	e.Msg = shorten(redact.Text(e.Msg), maxField)
+	e.Result = shorten(redact.Text(e.Result), maxField)
+	e.URL = shorten(redact.URL(e.URL), maxField)
 
 	line, err := json.Marshal(e)
 	if err != nil {
@@ -122,8 +169,13 @@ func (l *Logger) Emit(e Event) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.f == nil {
+	if l.closed {
 		return fmt.Errorf("event log is closed")
+	}
+	if l.f == nil { // a rotation could not reopen the file; try again rather than stay dark
+		if err := l.open(); err != nil {
+			return err
+		}
 	}
 	if l.size > 0 && l.size+int64(len(line)) > l.maxSize {
 		l.rotate() // best effort: on failure we keep appending to the current file
@@ -135,16 +187,14 @@ func (l *Logger) Emit(e Event) error {
 
 // rotate shifts path -> path.1 -> path.2 ... and drops the oldest. Called with l.mu held.
 func (l *Logger) rotate() {
-	if err := l.f.Close(); err != nil {
-		return
-	}
+	// Nothing is buffered, so an error from Close loses no data; the handle is unusable either way.
+	_ = l.f.Close()
 	l.f = nil
-	// If anything below fails the log keeps working: we reopen whatever file is at l.path.
+	// If anything below fails the log keeps working: we reopen whatever file is at l.path. If even
+	// that fails, l.f stays nil and the next Emit tries again.
 	defer func() {
 		if l.f == nil {
-			if err := l.open(); err != nil {
-				l.f = nil
-			}
+			_ = l.open()
 		}
 	}()
 	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep))
@@ -161,6 +211,7 @@ func (l *Logger) rotate() {
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closed = true
 	if l.f == nil {
 		return nil
 	}
@@ -172,19 +223,29 @@ func (l *Logger) Close() error {
 // Scan reads events from r, skipping lines that are not valid events (a torn last line after a
 // crash, a hand edit). It returns the events and how many lines were skipped.
 func Scan(r io.Reader) (events []Event, skipped int, err error) {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
+	br := bufio.NewReaderSize(r, maxLine)
+	for {
+		line, rerr := br.ReadSlice('\n')
+		tooLong := false
+		for errors.Is(rerr, bufio.ErrBufferFull) { // a line we cannot hold: drop the rest of it
+			tooLong = true
+			_, rerr = br.ReadSlice('\n')
 		}
-		var e Event
-		if json.Unmarshal(line, &e) != nil || e.Event == "" {
+		if tooLong {
 			skipped++
-			continue
+		} else if line = bytes.TrimSpace(line); len(line) > 0 {
+			var e Event
+			if json.Unmarshal(line, &e) != nil || e.Event == "" {
+				skipped++
+			} else {
+				events = append(events, e)
+			}
 		}
-		events = append(events, e)
+		if rerr != nil {
+			if rerr == io.EOF {
+				rerr = nil
+			}
+			return events, skipped, rerr
+		}
 	}
-	return events, skipped, sc.Err()
 }

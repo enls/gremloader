@@ -77,13 +77,15 @@ func (s *Source) listAPI(ctx context.Context, q Query) (*Listing, error) {
 		if r.PublishedAt != nil {
 			rel.Published = *r.PublishedAt
 		}
+		// The tag is not validated until b.add below; until then it is shown quoted and shortened.
+		shown := fmt.Sprintf("%q", truncate(r.TagName, 40))
 		for _, a := range r.Assets {
 			if !validAssetName(a.Name) {
-				b.warnf("ignoring asset with unsafe name %q in %s", truncate(a.Name, 40), r.TagName)
+				b.warnf("ignoring asset with unsafe name %q in %s", truncate(a.Name, 40), shown)
 				continue
 			}
 			if a.State != "uploaded" {
-				b.warnf("ignoring asset %s of %s: state is %q, not uploaded", a.Name, r.TagName, a.State)
+				b.warnf("ignoring asset %s of %s: state is %q, not uploaded", a.Name, shown, a.State)
 				continue
 			}
 			asset := Asset{Name: a.Name, ID: a.ID, Size: a.Size}
@@ -93,7 +95,7 @@ func (s *Source) listAPI(ctx context.Context, q Query) (*Listing, error) {
 				if h, err := checksum.ParseDigest(a.Digest); err == nil {
 					asset.SHA256 = h
 				} else {
-					b.warnf("ignoring digest of %s in %s: %v", a.Name, r.TagName, err)
+					b.warnf("ignoring digest of %s in %s: %v", a.Name, shown, err)
 				}
 			}
 			asset.URL = s.assetURL(q.Repo, r.TagName, a.Name)
@@ -105,7 +107,7 @@ func (s *Source) listAPI(ctx context.Context, q Query) (*Listing, error) {
 	}
 	l.Releases, l.Warnings = b.out, b.warn
 	if len(l.Releases) == 0 {
-		return nil, fmt.Errorf("%w: %s has no release with a usable tag", ErrNotFound, q.Repo)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, noUsableTag(q))
 	}
 	return l, nil
 }
@@ -145,6 +147,14 @@ func (s *Source) SelectAsset(r Release, pattern string) (Asset, error) {
 			return Asset{}, fmt.Errorf("asset name %q is not valid", pattern)
 		}
 		return Asset{Name: pattern, Size: -1, URL: s.assetURL(r.Repo, r.Tag, pattern)}, nil
+	}
+
+	// A name is its own match before it is a pattern: "tool-[x64].zip" is a file name here, and
+	// read as a glob it would select "tool-x.zip" instead.
+	for _, a := range r.Assets {
+		if a.Name == pattern {
+			return a, nil
+		}
 	}
 
 	var matches []Asset

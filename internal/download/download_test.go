@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -318,13 +320,13 @@ func TestClientErrorsFailFast(t *testing.T) {
 	}
 }
 
-func TestRetryAfterIsHonouredAndCapped(t *testing.T) {
+func TestRetryAfterIsHonoured(t *testing.T) {
 	cases := []struct {
 		header string
 		want   time.Duration
 	}{
 		{"2", 2 * time.Second},
-		{"3600", 60 * time.Second},
+		{"60", 60 * time.Second}, // exactly the cap
 	}
 	for _, c := range cases {
 		t.Run(c.header, func(t *testing.T) {
@@ -536,5 +538,124 @@ func TestFetchNeedsASizeCap(t *testing.T) {
 	}
 	if n := len(r.srv.Requests()); n != 0 {
 		t.Errorf("%d requests were made", n)
+	}
+}
+
+// A pause longer than the cap is not shortened to the cap: GitHub's rule is to not retry before
+// Retry-After has elapsed, and repeating the request early is what gets a client blocked.
+func TestRetryAfterBeyondTheCapIsNotRetriedEarly(t *testing.T) {
+	for _, status := range []int{429, 403, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			r := newRig(t, "", nil, nil)
+			r.srv.Inject(fakerelease.Fault{
+				PathContains: "/releases/download/", Status: status,
+				Header: map[string]string{"Retry-After": "3600"},
+			})
+			_, err := r.fetch(r.webAsset())
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if n := r.srv.RequestCount("/releases/download/"); n != 1 {
+				t.Errorf("requests = %d, want 1 (no early retry)", n)
+			}
+			if got := r.sleep.got(); len(got) != 0 {
+				t.Errorf("sleeps = %v, want none", got)
+			}
+			if status != 503 {
+				var rl *download.RateLimitError
+				if !errors.As(err, &rl) || rl.RetryAfter != time.Hour {
+					t.Errorf("err = %v, want a *RateLimitError carrying RetryAfter 1h", err)
+				}
+			}
+		})
+	}
+}
+
+// A Retry-After too big for a time.Duration must not wrap around (to a negative pause that reads as
+// "none" and retries immediately).
+func TestAbsurdRetryAfterDoesNotOverflow(t *testing.T) {
+	r := newRig(t, "", nil, nil)
+	r.srv.Inject(fakerelease.Fault{
+		PathContains: "/releases/download/", Status: 429,
+		Header: map[string]string{"Retry-After": "9223372037"},
+	})
+	_, err := r.fetch(r.webAsset())
+	var rl *download.RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want *RateLimitError", err)
+	}
+	if rl.RetryAfter <= time.Hour {
+		t.Errorf("RetryAfter = %v, want a huge positive pause", rl.RetryAfter)
+	}
+	if n := r.srv.RequestCount("/releases/download/"); n != 1 {
+		t.Errorf("requests = %d, want 1", n)
+	}
+}
+
+// A stall can happen before the status line arrives, not only mid-body; both are retried.
+func TestStallBeforeTheHeadersIsRetried(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		<-r.Context().Done() // never answers
+	}))
+	t.Cleanup(ts.Close)
+
+	sl := &sleeper{}
+	c := download.New(download.Config{
+		Policy:       download.Policy{Hosts: []string{"127.0.0.1"}, AllowHTTP: true},
+		StallTimeout: 150 * time.Millisecond,
+		Attempts:     2,
+		Sleep:        sl.Sleep,
+	})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x"})
+	if !errors.Is(err, download.ErrStalled) {
+		t.Fatalf("err = %v, want ErrStalled", err)
+	}
+	if hits.Load() != 2 {
+		t.Errorf("hits = %d, want 2 attempts", hits.Load())
+	}
+}
+
+// Get has its own cap, separate from Fetch's, and an unannounced (chunked) body must hit it.
+func TestGetStopsAnUnannouncedBodyOverTheCap(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chunk := bytes.Repeat([]byte("x"), 4096)
+		for range 64 {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}))
+	t.Cleanup(ts.Close)
+
+	c := download.New(download.Config{Policy: download.Policy{Hosts: []string{"127.0.0.1"}, AllowHTTP: true}})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x", MaxBytes: 10000})
+	if !errors.Is(err, download.ErrTooLarge) {
+		t.Fatalf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+// A certificate that does not verify will not verify on the next attempt either: fail at once,
+// and never retry into a different answer.
+func TestCertificateFailureIsNotRetried(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("hello"))
+	}))
+	ts.Config.ErrorLog = log.New(io.Discard, "", 0) // the handshake errors are the point
+	t.Cleanup(ts.Close)
+
+	sl := &sleeper{}
+	c := download.New(download.Config{
+		Policy: download.Policy{Hosts: []string{"127.0.0.1"}},
+		Sleep:  sl.Sleep,
+	})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x"})
+	if err == nil {
+		t.Fatal("an untrusted certificate was accepted")
+	}
+	if got := sl.got(); len(got) != 0 {
+		t.Errorf("sleeps = %v; a certificate failure must not be retried", got)
 	}
 }

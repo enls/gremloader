@@ -90,3 +90,21 @@ path the asset list is unknown, so a plain name is trusted and a wildcard return
   GitHub's `digest`, later attestation) is a separate step with its own policy.
 - `digest` and `state` were observed on every asset of all twelve Craft repositories, but older
   releases of other projects may lack `digest`; it is treated as optional.
+
+## Amendment (2026-10-10): corrections found by the review of M1 and M2
+
+The decision stands. Four statements above were sharpened after a bug check; the code and tests
+follow these, not the sentences they replace.
+
+- **"Does not fall over on not found."** That holds for a repository that does not exist and for a
+  repository with no releases. It does *not* hold for "the feed has no usable tag": the feed lists
+  only the ten most recent releases, so in a monorepo a package's own releases can have scrolled
+  out of it. That case is a partial view and falls over to the API.
+- **"Fails with `ErrNeedsAPI` and says to set a token."** `ErrNeedsAPI` now means exactly "the API
+  was refused for quota". A bad token, an outage or a network error keep their own error, and the
+  advice to set a token is given only when none is configured.
+- **"`Retry-After` is honoured up to 60 s."** A pause longer than the cap is not shortened to the
+  cap and retried early (GitHub says not to retry before it has elapsed); the request is not
+  repeated and the caller gets the rate-limit error with `RetryAfter` set.
+- **`Listing.Latest`** is GitHub's own latest (or empty) on the web path and the newest stable
+  release under the tag prefix on the API path. A resolver must not depend on it being set.

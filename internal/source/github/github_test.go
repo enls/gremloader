@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -648,5 +649,158 @@ func TestRealPhotoCraftFeedAndRelease(t *testing.T) {
 	}
 	if _, err := src.SelectAsset(rel, "photocraft-0.6.0-macos-universal.zip"); err == nil {
 		t.Error("matched an asset that does not exist")
+	}
+}
+
+// A monorepo holds several packages' tags. The feed lists only the ten most recent releases, so a
+// package whose own releases have scrolled out of it sees no usable tag there. That is a gap in
+// what the feed shows, not "not found": the API list is longer and knows the tag.
+func TestWebPathWithNoUsableTagFallsOverToTheAPI(t *testing.T) {
+	e := newEnv(t, "")
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+	for i := 1; i <= 12; i++ {
+		e.srv.AddRelease("o", "mono", fakerelease.Release{
+			Tag:         fmt.Sprintf("lib-v1.%d.0", i),
+			PublishedAt: t0.AddDate(0, 0, i),
+		})
+	}
+
+	l := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if l.Via != github.ModeAPI || l.FellOver == "" {
+		t.Errorf("via %q, fell over %q; want the API path after the web path found nothing", l.Via, l.FellOver)
+	}
+	if got := tags(l); len(got) != 1 || got[0] != "app-v1.0.0" {
+		t.Errorf("releases = %v, want [app-v1.0.0]", got)
+	}
+}
+
+// And when the tag really is not there on either path, the answer is still "not found".
+func TestNoUsableTagOnEitherPathIsNotFound(t *testing.T) {
+	e := newEnv(t, "")
+	for i := 1; i <= 12; i++ {
+		e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: fmt.Sprintf("lib-v1.%d.0", i), PublishedAt: t0.AddDate(0, 0, i)})
+	}
+	_, err := e.src.List(context.Background(), github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// ErrNeedsAPI means "cannot be answered without the API, and the API is rate limited". A bad token
+// or an outage is a different failure and must not send the user off to set a token they have.
+func TestPrereleaseChannelAPIFailureIsNotReportedAsNeedingAToken(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+		e := newEnv(t, "tok")
+		e.srv.Inject(fakerelease.Fault{PathContains: "/api/", Status: status})
+		_, err := e.src.List(context.Background(), github.Query{Repo: "o/r", NeedAPIData: true})
+		if err == nil {
+			t.Fatalf("HTTP %d: no error", status)
+		}
+		if errors.Is(err, github.ErrNeedsAPI) || strings.Contains(err.Error(), "GITHUB_TOKEN") {
+			t.Errorf("HTTP %d: err = %v; this is not a missing-token problem", status, err)
+		}
+	}
+}
+
+func TestRateLimitedPrereleaseChannelWithATokenDoesNotAskForOne(t *testing.T) {
+	e := newEnv(t, "tok")
+	e.srv.SetRateLimited(true)
+	_, err := e.src.List(context.Background(), github.Query{Repo: "o/r", NeedAPIData: true})
+	var rl *download.RateLimitError
+	if !errors.Is(err, github.ErrNeedsAPI) || !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want ErrNeedsAPI wrapping the rate limit", err)
+	}
+	if strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Errorf("err = %v; a token is already configured", err)
+	}
+}
+
+// The pattern is a path.Match pattern, but an asset's own name must always select itself, even
+// when the name contains glob metacharacters.
+func TestExactAssetNameWinsOverGlobSyntax(t *testing.T) {
+	e := newEnv(t, "tok")
+	e.srv.AddRelease("o", "b", fakerelease.Release{
+		Tag: "v1.0.0",
+		Assets: []fakerelease.Asset{
+			{Name: "tool-[x64].zip", Data: appData},
+			{Name: "tool-x.zip", Data: appData},
+		},
+	})
+	l := e.list(t, github.Query{Repo: "o/b"})
+	a, err := e.src.SelectAsset(find(t, l, "v1.0.0"), "tool-[x64].zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Name != "tool-[x64].zip" {
+		t.Errorf("selected %q", a.Name)
+	}
+}
+
+// Warnings are shown on the terminal and written to the event log, so nothing from the network may
+// reach them raw: a tag is untrusted until ValidTag has passed it.
+func TestWarningsNeverCarryAnUnvalidatedTag(t *testing.T) {
+	const list = `[{"tag_name":"v1\u001b[2J\u001b]0;pwned\u0007","draft":false,"prerelease":false,
+	  "published_at":"2026-01-02T00:00:00Z",
+	  "assets":[{"id":1,"name":"a/b","state":"uploaded","size":1},
+	            {"id":2,"name":"c.zip","state":"starter","size":1},
+	            {"id":3,"name":"d.zip","state":"uploaded","size":1,"digest":"md5:abc"}]},
+	 {"tag_name":"v1.0.0","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z","assets":[]}]`
+	r := newRaw(t, map[string]http.HandlerFunc{"/api/repos/o/r/releases": body(list)})
+	l, err := r.source(t, "tok").List(context.Background(), github.Query{Repo: "o/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Warnings) == 0 {
+		t.Fatal("no warnings; the test is not exercising anything")
+	}
+	for _, w := range l.Warnings {
+		for _, c := range w {
+			if c < 0x20 || c == 0x7f {
+				t.Errorf("warning carries control character %q: %q", c, w)
+				break
+			}
+		}
+	}
+}
+
+// In a monorepo the other packages' tags are expected data, not anomalies. They are dropped
+// quietly so that a real problem (an unsafe or unparsable tag) is not buried among them.
+func TestOtherPackagesTagsInAMonorepoAreNotWarnedAbout(t *testing.T) {
+	e := newEnv(t, "")
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "lib-v2.0.0", PublishedAt: t0.AddDate(0, 0, 1)})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "tool-v3.0.0", PublishedAt: t0.AddDate(0, 0, 2)})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-vNEXT", PublishedAt: t0.AddDate(0, 0, 3)})
+
+	l := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if got := tags(l); len(got) != 1 || got[0] != "app-v1.0.0" {
+		t.Fatalf("releases = %v", got)
+	}
+	// The one tag that has the prefix and does not parse is worth saying; the other packages' are not.
+	if len(l.Warnings) != 1 || !strings.Contains(l.Warnings[0], "app-vNEXT") {
+		t.Errorf("warnings = %q, want exactly one, for app-vNEXT", l.Warnings)
+	}
+}
+
+// Only a link whose relation is "alternate" is the entry's own page; a "related" or "enclosure"
+// link may point anywhere in the repository, so a tag taken from it would be somebody else's.
+func TestAtomLinksOtherThanAlternateAreIgnored(t *testing.T) {
+	const feed = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+	 <entry><updated>2026-01-03T00:00:00Z</updated><title>ok</title>
+	   <link rel="related" href="https://github.com/o/r/releases/tag/v9.9.9"/>
+	   <link rel="alternate" href="https://github.com/o/r/releases/tag/v1.2.0"/></entry>
+	 <entry><updated>2026-01-02T00:00:00Z</updated><title>only-related</title>
+	   <link rel="enclosure" href="https://github.com/o/r/releases/tag/v8.8.8"/></entry>
+	</feed>`
+	r := newRaw(t, map[string]http.HandlerFunc{
+		"/web/o/r/releases/latest": redirect("/web/o/r/releases/tag/v1.2.0", http.StatusFound),
+		"/web/o/r/releases.atom":   body(feed),
+	})
+	l, err := r.source(t, "").List(context.Background(), github.Query{Repo: "o/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(tags(l), ","); got != "v1.2.0" {
+		t.Errorf("releases = %s, want only v1.2.0", got)
 	}
 }
