@@ -16,7 +16,8 @@ func TestGitHubPolicyHosts(t *testing.T) {
 		{"https://release-assets.githubusercontent.com/x?sig=1", true},
 		{"https://objects.githubusercontent.com/x", true},
 		{"https://GITHUB.com/x", true},
-		{"https://githubusercontent.com/x", false}, // the wildcard is for subdomains only
+		{"https://githubusercontent.com/x", false},  // the wildcard is for subdomains only
+		{"https://.githubusercontent.com/x", false}, // a leading-dot name is not a subdomain either
 		{"https://evilgithubusercontent.com/x", false},
 		{"https://github.com.evil.example/x", false},
 		{"https://raw.githubusercontent.com.evil.example/x", false},

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -268,5 +269,38 @@ func TestServesRealFixtureBytesUnchanged(t *testing.T) {
 	_, gotSums := get(t, s.AssetURL("enls", "craftwerk", "v0.2.0", "SHA256SUMS.txt"))
 	if string(gotZip) != string(zipBytes) || string(gotSums) != string(sums) {
 		t.Error("served bytes differ from the fixtures")
+	}
+}
+
+// A request the rate limiter answers never reaches fault injection, so it must not use up one of
+// a fault's counted uses: a test combining the two would otherwise never see its fault.
+func TestRateLimitedRequestDoesNotConsumeAFault(t *testing.T) {
+	s := newPopulated(t)
+	s.Inject(Fault{PathContains: "/api/", Status: http.StatusServiceUnavailable, Times: 1})
+	s.SetRateLimited(true)
+	if resp, _ := get(t, s.APIBase()+"/repos/enls/tool/releases"); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("limited request: status %d, want 403", resp.StatusCode)
+	}
+	s.SetRateLimited(false)
+	if resp, _ := get(t, s.APIBase()+"/repos/enls/tool/releases"); resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status %d, want the 503 that was injected", resp.StatusCode)
+	}
+}
+
+// A draft is invisible everywhere, including to a client that knows an asset id.
+func TestDraftAssetsAreNotServedByID(t *testing.T) {
+	s := New(t)
+	s.AddRelease("o", "r", Release{Tag: "v1.0.0", Draft: true, Assets: []Asset{{Name: "a.zip", Data: []byte("secret")}}})
+	var id string
+	for k, a := range s.assets {
+		if a.tag == "v1.0.0" {
+			id = strconv.FormatInt(k, 10)
+		}
+	}
+	if id == "" {
+		t.Fatal("asset not stored")
+	}
+	if resp, body := get(t, s.APIBase()+"/repos/o/r/releases/assets/"+id); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d (%q), want 404 for an asset of a draft", resp.StatusCode, body)
 	}
 }

@@ -29,16 +29,12 @@ type Env struct {
 	Home   string // the user's home directory
 }
 
-// System returns the real environment.
-func System() (Env, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// A GREMLOADER_HOME override still works without a home directory.
-		if os.Getenv("GREMLOADER_HOME") == "" {
-			return Env{}, fmt.Errorf("cannot find the home directory: %w", err)
-		}
-	}
-	return Env{GOOS: runtime.GOOS, Getenv: os.Getenv, Home: home}, nil
+// System returns the real environment. A missing home directory is not an error here: a
+// GREMLOADER_HOME override, or %APPDATA% and %LOCALAPPDATA% on Windows, make it unnecessary, and
+// Resolve reports it when a layout really needs it.
+func System() Env {
+	home, _ := os.UserHomeDir()
+	return Env{GOOS: runtime.GOOS, Getenv: os.Getenv, Home: home}
 }
 
 // Paths are the three base directories.
@@ -130,9 +126,23 @@ var packageName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
 
 // ValidPackageName reports whether s may be used as a package name. Names become folder names
 // and appear in URLs and hook arguments, so the rule is strict: lower-case letters, digits and
-// ". _ -", at most 63 characters, starting with a letter or digit, and never ".." inside.
+// ". _ -", at most 63 characters, starting with a letter or digit, never ".." inside, not ending
+// in a dot, and not a Windows device name (con, nul, com1 ... with or without an extension). The
+// last two matter only on Windows, but a package file has to mean the same everywhere.
 func ValidPackageName(s string) bool {
-	return packageName.MatchString(s) && !strings.Contains(s, "..")
+	if !packageName.MatchString(s) || strings.Contains(s, "..") || strings.HasSuffix(s, ".") {
+		return false
+	}
+	stem, _, _ := strings.Cut(s, ".")
+	return !windowsDevice[stem]
+}
+
+var windowsDevice = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true,
+	"com0": true, "com1": true, "com2": true, "com3": true, "com4": true,
+	"com5": true, "com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt0": true, "lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true,
+	"lpt5": true, "lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
 // FindPackageFile locates gremloader.toml. Order: explicit (--file), $GREMLOADER_FILE, then

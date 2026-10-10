@@ -187,3 +187,42 @@ func TestFindPackageFile(t *testing.T) {
 		t.Error("GREMLOADER_FILE pointing nowhere must be an error")
 	}
 }
+
+// Package names become folder names under state\staging, journal and previous. On Windows a device
+// name (with or without an extension) cannot be one, and a trailing dot is silently dropped, so
+// "foo." would share a folder with "foo". A package file must mean the same on every OS, so the
+// rule applies everywhere.
+func TestPackageNamesThatWindowsCannotUseAreRejected(t *testing.T) {
+	for _, s := range []string{
+		"con", "prn", "aux", "nul", "com1", "com9", "lpt1", "lpt9", "com0", "lpt0",
+		"con.txt", "nul.v1", "aux.tar.gz", "foo.", "foo...", "a.",
+	} {
+		if ValidPackageName(s) {
+			t.Errorf("ValidPackageName(%q) = true; Windows cannot use it as a folder name", s)
+		}
+	}
+	// Close relatives are fine.
+	for _, s := range []string{"console", "com", "com10", "lpt", "nullable", "my-con", "a.con", "aux-tools", "x.nul"} {
+		if !ValidPackageName(s) {
+			t.Errorf("ValidPackageName(%q) = false", s)
+		}
+	}
+}
+
+// A scheduled task or service can run with no user profile variable at all. On Windows nothing
+// else needs it when %APPDATA% and %LOCALAPPDATA% are set, so System must not fail on its own;
+// Resolve is the place that says what is missing.
+func TestSystemDoesNotFailOnAMissingHomeThatResolveDoesNotNeed(t *testing.T) {
+	for _, k := range []string{"HOME", "USERPROFILE", "GREMLOADER_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	_, err := Resolve(System())
+	if runtime.GOOS == "windows" && err != nil {
+		t.Errorf("Resolve: %v", err)
+	}
+	if runtime.GOOS != "windows" && (err == nil || !strings.Contains(err.Error(), "GREMLOADER_HOME")) {
+		t.Errorf("Resolve without a home: %v, want an error naming GREMLOADER_HOME", err)
+	}
+}

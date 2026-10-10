@@ -97,10 +97,16 @@ func WithClock(c clock.Clock) Option { return func(s *Server) { s.clock = c } }
 // Without it downloads are served directly.
 func WithCDN() Option { return func(s *Server) { s.useCDN = true } }
 
+// WithFeedLimit sets how many releases releases.atom lists. github.com lists the 10 most recent,
+// which is the default here; serving every release would hide the monorepo case where a package's
+// own releases have scrolled out of the feed.
+func WithFeedLimit(n int) Option { return func(s *Server) { s.feedLimit = n } }
+
 type storedAsset struct {
 	id          int64
 	owner, repo string
 	tag         string
+	draft       bool // its release is a draft: never served, by name or by id
 	Asset
 }
 
@@ -116,8 +122,9 @@ type Server struct {
 	srv   *httptest.Server
 	clock clock.Clock
 
-	useCDN bool
-	cdn    *httptest.Server
+	useCDN    bool
+	cdn       *httptest.Server
+	feedLimit int // releases.atom entries; 0 means the default, 10
 
 	mu             sync.Mutex
 	releases       []*storedRelease
@@ -224,7 +231,7 @@ func (s *Server) AddRelease(owner, repo string, r Release) {
 			s.tb.Fatalf("fakerelease: asset with no name in %s/%s %s", owner, repo, r.Tag)
 		}
 		s.nextID++
-		s.assets[s.nextID] = &storedAsset{id: s.nextID, owner: owner, repo: repo, tag: r.Tag, Asset: a}
+		s.assets[s.nextID] = &storedAsset{id: s.nextID, owner: owner, repo: repo, tag: r.Tag, draft: r.Draft, Asset: a}
 	}
 	s.releases = append(s.releases, stored)
 }
@@ -336,7 +343,11 @@ func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request
 		}
 		remaining = s.quotaRemaining
 	}
-	fault := s.takeFault(r.URL.Path)
+	// A request the limiter answers never reaches fault injection, so it does not use up a fault.
+	var fault *Fault
+	if !limited {
+		fault = s.takeFault(r.URL.Path)
+	}
 	s.mu.Unlock()
 
 	if origin == "api" && limit > 0 {
@@ -574,7 +585,7 @@ func (s *Server) apiAsset(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	a := s.assets[id]
 	s.mu.Unlock()
-	if a == nil || a.owner != r.PathValue("owner") || a.repo != r.PathValue("repo") {
+	if a == nil || a.draft || a.owner != r.PathValue("owner") || a.repo != r.PathValue("repo") {
 		notFound(w, r)
 		return
 	}
@@ -601,7 +612,7 @@ func (s *Server) cdnAsset(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	a := s.assets[id]
 	s.mu.Unlock()
-	if a == nil || a.Name != r.PathValue("name") || !strings.HasPrefix(r.URL.Query().Get("sig"), "FAKESIG") {
+	if a == nil || a.draft || a.Name != r.PathValue("name") || !strings.HasPrefix(r.URL.Query().Get("sig"), "FAKESIG") {
 		http.NotFound(w, r)
 		return
 	}
@@ -697,6 +708,13 @@ func (s *Server) webAtom(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(rels) > 0 {
 		feed.Updated = rels[0].CreatedAt.UTC().Format(time.RFC3339)
+	}
+	limit := s.feedLimit
+	if limit <= 0 {
+		limit = 10
+	}
+	if len(rels) > limit {
+		rels = rels[:limit]
 	}
 	for _, rel := range rels {
 		feed.Entries = append(feed.Entries, atomEntry{

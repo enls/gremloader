@@ -144,8 +144,11 @@ type Release struct {
 // Listing is the result of List.
 type Listing struct {
 	Releases []Release // drafts and unusable tags removed; source order, not sorted
-	// Latest is the tag GitHub itself calls the latest stable release ("" if unknown or not
-	// usable under the tag prefix).
+	// Latest is a hint, not the answer, and it differs by path. Web: the tag GitHub itself calls
+	// the latest stable release, "" if that tag is not usable under the tag prefix (in a monorepo
+	// it belongs to another package). API: the newest stable release under the prefix, because the
+	// list does not say which one GitHub calls latest and a package wants its own. The resolver
+	// must not depend on Latest being set.
 	Latest string
 	// Via is the path that produced the listing.
 	Via Mode
@@ -204,16 +207,35 @@ func (s *Source) List(ctx context.Context, q Query) (*Listing, error) {
 	}
 
 	err := errors.Join(errs...)
-	if q.NeedAPIData && !errors.Is(err, ErrNotFound) {
-		err = fmt.Errorf("%w (the prerelease channel needs the API; set GITHUB_TOKEN to raise the limit): %w", ErrNeedsAPI, err)
+	// "Needs the API" is the answer only when the API was refused for quota. A bad token or an
+	// outage is a different failure and keeps its own error.
+	var rl *download.RateLimitError
+	if q.NeedAPIData && errors.As(err, &rl) {
+		hint := "the API quota is used up"
+		if !s.c.HasToken() {
+			hint = "the prerelease channel needs the API; set GITHUB_TOKEN to raise the limit"
+		}
+		err = fmt.Errorf("%w (%s): %w", ErrNeedsAPI, hint, err)
 	}
 	return nil, err
 }
 
+// partialViewError is ErrNotFound as far as the website's feed goes. The feed shows only the most
+// recent releases, so "no usable tag in it" says nothing about the repository: the API list is
+// longer and may know the tag (a monorepo package whose releases have scrolled out of the feed).
+// Unlike a plain ErrNotFound, the other path is worth trying.
+type partialViewError struct{ msg string }
+
+func (e *partialViewError) Error() string        { return ErrNotFound.Error() + ": " + e.msg }
+func (e *partialViewError) Is(target error) bool { return target == ErrNotFound }
+
 // worthFallingOver reports whether trying the other path could give a different answer.
 func worthFallingOver(err error) bool {
 	var pe *download.PolicyError
+	var pv *partialViewError
 	switch {
+	case errors.As(err, &pv):
+		return true
 	case errors.Is(err, ErrNotFound), errors.Is(err, download.ErrTooLarge), errors.As(err, &pe):
 		return false
 	}
@@ -253,6 +275,9 @@ func (b *listBuilder) add(r Release) int {
 		b.warnf("ignoring release with unsafe tag %q", truncate(r.Tag, 40))
 		return -1
 	}
+	if b.prefix != "" && !strings.HasPrefix(r.Tag, b.prefix) {
+		return -1 // another package's tag in a shared repository: expected, not worth a warning
+	}
 	v, err := ver.FromTag(r.Tag, b.prefix)
 	if err != nil {
 		b.warnf("ignoring tag %s: %v", r.Tag, err)
@@ -273,4 +298,14 @@ func truncate(s string, n int) string {
 // assetURL builds the public download URL of an asset from a validated tag and asset name.
 func (s *Source) assetURL(repo, tag, name string) string {
 	return fmt.Sprintf("%s/%s/releases/download/%s/%s", s.web, repo, url.PathEscape(tag), url.PathEscape(name))
+}
+
+// noUsableTag words "nothing matched", naming the tag prefix because a mistyped one is the usual
+// reason.
+func noUsableTag(q Query) string {
+	msg := q.Repo + " has no release with a usable tag"
+	if q.TagPrefix != "" {
+		msg += fmt.Sprintf(" (tag prefix %q)", q.TagPrefix)
+	}
+	return msg
 }

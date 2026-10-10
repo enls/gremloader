@@ -13,11 +13,12 @@ import (
 )
 
 // URL returns raw without its query string, fragment and credentials. A string that does not
-// parse as a URL is returned with everything after the first "?" or "#" removed.
+// parse as a URL is returned with everything after the first "?" or "#" removed and, if it has the
+// shape scheme://user:password@host, without the user:password part.
 func URL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" {
-		return cutAt(raw, "?#")
+		return cutAt(dropUserinfo(raw), "?#") // userinfo first: a password may hold a raw ? or #
 	}
 	u.RawQuery = ""
 	u.ForceQuery = false
@@ -42,6 +43,24 @@ func Token(s string) string {
 		return ""
 	}
 	return "***"
+}
+
+// dropUserinfo replaces the user:password part of a "scheme://user:pw@host" string that url.Parse
+// would not accept (a bad escape, an unterminated IPv6 host), where nothing else could remove it.
+func dropUserinfo(s string) string {
+	i := strings.Index(s, "://")
+	if i < 0 {
+		return s
+	}
+	rest := s[i+3:]
+	authority := rest
+	if end := strings.IndexByte(rest, '/'); end >= 0 {
+		authority = rest[:end]
+	}
+	if at := strings.LastIndexByte(authority, '@'); at >= 0 {
+		return s[:i+3] + "redacted" + rest[at:]
+	}
+	return s
 }
 
 func cutAt(s, chars string) string {

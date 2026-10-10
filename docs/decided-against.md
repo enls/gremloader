@@ -20,3 +20,9 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   requiring `gh` on every machine, at the cost of a larger dependency. See ADR 0006.
 - **A `grem` short alias.** Taken by another repo-manager tool.
 - **Treating the gangsheet app's npm dependencies as host dependencies.** They live in the image.
+- **A y/n prompt on a hash mismatch ("this may be malicious, continue?").** Proposed 2026-10-10 and
+  turned down in favour of a hard failure with `--accept-sha256 <hash>`. The scheduled run has no
+  terminal, a bare "y" is answered by reflex, "may be malicious" overstates what is usually a corrupt
+  download or a publisher who did not regenerate the checksum file, and the override should record
+  *which bytes* were accepted. A prompt that defaults to N, only on a TTY, was considered a fallback
+  but the hash form is the only way through. See the Phase 1 plan, E.3.4.

@@ -60,3 +60,24 @@ func FuzzURL(f *testing.F) {
 		}
 	})
 }
+
+// A URL that does not parse still must not give its credentials away: the fallback used to cut
+// only the query string and returned the userinfo untouched.
+func TestUnparsableURLStillLosesItsCredentials(t *testing.T) {
+	for _, in := range []string{
+		"https://user:p%zzw@host.example/x?sig=1",   // bad escape in the password
+		"http://user:hunter2@[::1/x#frag",           // unterminated IPv6 host
+		"https://user:hunter2#x@host.example/p",     // raw # in the password
+		"https://user:hunter2@host.example/a b?q=1", // space in the path
+	} {
+		got := URL(in)
+		for _, secret := range []string{"p%zzw", "hunter2", "user:", "sig=", "q=1", "frag"} {
+			if strings.Contains(got, secret) {
+				t.Errorf("URL(%q) = %q still contains %q", in, got, secret)
+			}
+		}
+		if !strings.Contains(got, "://") {
+			t.Errorf("URL(%q) = %q lost its shape", in, got)
+		}
+	}
+}

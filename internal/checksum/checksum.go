@@ -13,7 +13,6 @@
 package checksum
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -66,12 +65,15 @@ func Parse(r io.Reader) (*File, error) {
 	text := decodeText(raw)
 
 	f := &File{}
-	sc := bufio.NewScanner(strings.NewReader(text))
-	sc.Buffer(make([]byte, 0, 4096), maxLineSize)
-	n := 0
-	for sc.Scan() {
-		n++
-		line := strings.TrimSpace(strings.TrimSuffix(sc.Text(), "\r"))
+	// The text is already in memory (and bounded), so split it rather than scan it: a scanner
+	// gives up on the whole file at the first line past its buffer.
+	for i, raw := range strings.Split(text, "\n") {
+		n := i + 1
+		if len(raw) > maxLineSize {
+			f.Warnings = append(f.Warnings, fmt.Sprintf("line %d: longer than %d bytes; ignored", n, maxLineSize))
+			continue
+		}
+		line := strings.TrimSpace(strings.TrimSuffix(raw, "\r"))
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -82,9 +84,6 @@ func Parse(r io.Reader) (*File, error) {
 		}
 		e.Line = n
 		f.Entries = append(f.Entries, e)
-	}
-	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("reading checksum file: %w", err)
 	}
 	return f, nil
 }

@@ -252,3 +252,23 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+// One absurdly long line is one more line it cannot understand: a warning, not a reason to refuse
+// the whole file and with it the entry that was wanted.
+func TestOverlongLineIsAWarningNotAnError(t *testing.T) {
+	in := h1 + "  before.zip\n" +
+		strings.Repeat("x", 100<<10) + "\n" +
+		h2 + "  after.zip\n"
+	f, err := Parse(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	for _, n := range []string{"before.zip", "after.zip"} {
+		if _, err := f.Lookup(n); err != nil {
+			t.Errorf("%s: %v", n, err)
+		}
+	}
+	if len(f.Warnings) != 1 || !strings.HasPrefix(f.Warnings[0], "line 2:") {
+		t.Errorf("warnings = %v, want one for line 2", f.Warnings)
+	}
+}
