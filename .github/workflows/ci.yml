@@ -20,10 +20,15 @@ jobs:
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Same shell on both OSes: PowerShell splits `-coverprofile=coverage.out` at the dot.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # ubuntu-24.04 is the server's OS; ubuntu-latest is about to move to a newer release.
+        os: [ubuntu-24.04, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,9 +96,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+      # The binary is run directly rather than through gitleaks-action: the action builds a
+      # "<first commit>^..HEAD" range, which fails on a repository whose first push has a root
+      # commit. The expected hash is pinned here, not fetched alongside the download.
+      - name: gitleaks (full history)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check -
+          tar -xzf "$archive" gitleaks
+          ./gitleaks git --redact --verbose --no-banner .
 
   # A single required check for branch protection, so the matrix can change without
   # touching the protection rule.
