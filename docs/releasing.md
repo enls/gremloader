@@ -2,6 +2,29 @@
 
 Nothing is published automatically. A tag produces a **draft**; a person tests it and publishes it.
 
+## One-time setup: signing tags
+
+Release tags are signed with an SSH key, so GitHub can show them as Verified. Use a key that is only
+for signing, not the one used to log in to servers.
+
+```sh
+ssh-keygen -t ed25519 -C "gremloader signing" -f ~/.ssh/id_ed25519_signing
+```
+
+1. On GitHub: Settings, SSH and GPG keys, New SSH key, **Key type: Signing Key**, paste
+   `~/.ssh/id_ed25519_signing.pub`.
+2. In this repository only (not globally):
+
+   ```sh
+   git config gpg.format ssh
+   git config user.signingkey ~/.ssh/id_ed25519_signing.pub
+   git config tag.gpgsign true
+   # lets `git tag -v` verify locally:
+   echo "<commit email> $(cat ~/.ssh/id_ed25519_signing.pub)" > ~/.ssh/allowed_signers
+   git config gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+   ```
+3. Try it: `git tag -s signing-test -m test && git tag -v signing-test && git tag -d signing-test`.
+
 ## Cutting a release
 
 1. `main` is green (the **CI passed** check) and contains everything intended for the release.
