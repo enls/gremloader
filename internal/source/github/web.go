@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/enls/gremloader/internal/download"
+	"github.com/enls/gremloader/internal/ver"
 )
 
 const (
@@ -60,12 +61,15 @@ func (s *Source) listWeb(ctx context.Context, q Query) (*Listing, error) {
 	if latest != "" {
 		if i := b.add(Release{Tag: latest}); i >= 0 {
 			l.Latest = latest
+		} else if q.TagPrefix != "" && ver.ValidTag(latest) && !strings.HasPrefix(latest, q.TagPrefix) {
+			// Not an anomaly, but it is why Latest is empty, so it is said once.
+			b.warnf("GitHub's latest release is %s, which is not under the tag prefix %q", latest, q.TagPrefix)
 		}
 	}
 
 	l.Releases, l.Warnings = b.out, b.warn
 	if len(l.Releases) == 0 {
-		return nil, &partialViewError{msg: q.Repo + " has no release with a usable tag among the feed's recent ones"}
+		return nil, &partialViewError{msg: noUsableTag(q) + " among the feed's recent ones"}
 	}
 	return l, nil
 }

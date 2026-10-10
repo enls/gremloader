@@ -107,7 +107,7 @@ func (s *Source) listAPI(ctx context.Context, q Query) (*Listing, error) {
 	}
 	l.Releases, l.Warnings = b.out, b.warn
 	if len(l.Releases) == 0 {
-		return nil, fmt.Errorf("%w: %s has no release with a usable tag", ErrNotFound, q.Repo)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, noUsableTag(q))
 	}
 	return l, nil
 }

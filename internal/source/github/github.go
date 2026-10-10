@@ -272,6 +272,9 @@ func (b *listBuilder) add(r Release) int {
 		b.warnf("ignoring release with unsafe tag %q", truncate(r.Tag, 40))
 		return -1
 	}
+	if b.prefix != "" && !strings.HasPrefix(r.Tag, b.prefix) {
+		return -1 // another package's tag in a shared repository: expected, not worth a warning
+	}
 	v, err := ver.FromTag(r.Tag, b.prefix)
 	if err != nil {
 		b.warnf("ignoring tag %s: %v", r.Tag, err)
@@ -292,4 +295,14 @@ func truncate(s string, n int) string {
 // assetURL builds the public download URL of an asset from a validated tag and asset name.
 func (s *Source) assetURL(repo, tag, name string) string {
 	return fmt.Sprintf("%s/%s/releases/download/%s/%s", s.web, repo, url.PathEscape(tag), url.PathEscape(name))
+}
+
+// noUsableTag words "nothing matched", naming the tag prefix because a mistyped one is the usual
+// reason.
+func noUsableTag(q Query) string {
+	msg := q.Repo + " has no release with a usable tag"
+	if q.TagPrefix != "" {
+		msg += fmt.Sprintf(" (tag prefix %q)", q.TagPrefix)
+	}
+	return msg
 }

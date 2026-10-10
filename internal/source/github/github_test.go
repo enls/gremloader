@@ -762,3 +762,22 @@ func TestWarningsNeverCarryAnUnvalidatedTag(t *testing.T) {
 		}
 	}
 }
+
+// In a monorepo the other packages' tags are expected data, not anomalies. They are dropped
+// quietly so that a real problem (an unsafe or unparsable tag) is not buried among them.
+func TestOtherPackagesTagsInAMonorepoAreNotWarnedAbout(t *testing.T) {
+	e := newEnv(t, "")
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "lib-v2.0.0", PublishedAt: t0.AddDate(0, 0, 1)})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "tool-v3.0.0", PublishedAt: t0.AddDate(0, 0, 2)})
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-vNEXT", PublishedAt: t0.AddDate(0, 0, 3)})
+
+	l := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if got := tags(l); len(got) != 1 || got[0] != "app-v1.0.0" {
+		t.Fatalf("releases = %v", got)
+	}
+	// The one tag that has the prefix and does not parse is worth saying; the other packages' are not.
+	if len(l.Warnings) != 1 || !strings.Contains(l.Warnings[0], "app-vNEXT") {
+		t.Errorf("warnings = %q, want exactly one, for app-vNEXT", l.Warnings)
+	}
+}
