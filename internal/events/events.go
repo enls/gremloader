@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,7 +136,7 @@ func shorten(s string, limit int) string {
 // endsWithNewline reports whether the last byte of the file at path is a newline. Any doubt (it
 // cannot be read) counts as yes: a stray blank line is harmless, a failed open is not.
 func endsWithNewline(path string, size int64) bool {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // the log file this Logger opened for append
 	if err != nil {
 		return true
 	}
@@ -226,7 +227,7 @@ func Scan(r io.Reader) (events []Event, skipped int, err error) {
 	for {
 		line, rerr := br.ReadSlice('\n')
 		tooLong := false
-		for rerr == bufio.ErrBufferFull { // a line we cannot hold: drop the rest of it
+		for errors.Is(rerr, bufio.ErrBufferFull) { // a line we cannot hold: drop the rest of it
 			tooLong = true
 			_, rerr = br.ReadSlice('\n')
 		}
