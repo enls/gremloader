@@ -314,3 +314,24 @@ func TestEmitRecoversWhenTheFileWasNotReopened(t *testing.T) {
 		t.Errorf("lines = %v", got)
 	}
 }
+
+// Result is free text as well (callers put err.Error() there), so a signed link in it must be
+// redacted like one in Msg.
+func TestSecretsInResultNeverReachTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	l, err := Open(path, WithClock(clock.NewFake(t0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Emit(Event{Event: "download", Result: "failed: GET https://cdn.example/a?sig=SECRETSIG&jwt=SECRETJWT: EOF"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(b); strings.Contains(s, "SECRET") || !strings.Contains(s, "https://cdn.example/a") {
+		t.Errorf("log line = %s", s)
+	}
+}

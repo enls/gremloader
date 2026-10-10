@@ -1,8 +1,9 @@
 // Package events writes the activity log: one JSON object per line (JSON Lines), so "what did
 // GremLoader do and when" is something you can grep, tail, load into jq or query from the CLI.
 //
-// Every message and URL is passed through internal/redact first, so signed download links and
-// tokens never reach the file. The file rotates by size (5 MiB, keeping 3 by default) so it
+// Every message, result and URL is passed through internal/redact first, so signed download links
+// and credentials inside URLs never reach the file. A bare token in free text is not recognised:
+// callers must not log one. The file rotates by size (5 MiB, keeping 3 by default) so it
 // cannot grow without bound. Writing the log must never be the reason an install fails, so Emit
 // reports errors to the caller, who is expected to note and ignore them.
 package events
@@ -156,6 +157,7 @@ func (l *Logger) Emit(e Event) error {
 		e.Level = Info
 	}
 	e.Msg = shorten(redact.Text(e.Msg), maxField)
+	e.Result = shorten(redact.Text(e.Result), maxField)
 	e.URL = shorten(redact.URL(e.URL), maxField)
 
 	line, err := json.Marshal(e)
