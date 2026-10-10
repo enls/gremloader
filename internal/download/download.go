@@ -340,7 +340,7 @@ func (c *Client) run(ctx context.Context, rq Request, handle func(*http.Response
 }
 
 // outcome is the result of one attempt: err is nil on success; retry says whether trying again
-// could help; wait is the server's requested pause (already capped), if it gave one.
+// could help; wait is the server's requested pause, if it gave one.
 type outcome struct {
 	err   error
 	retry bool
@@ -441,7 +441,9 @@ func (c *Client) statusError(resp *http.Response, shown string) outcome {
 	code := resp.StatusCode
 	h := resp.Header
 	retryAfter := c.retryAfter(h.Get("Retry-After"))
-	capped := min(retryAfter, c.cfg.MaxRetryWait)
+	// A pause longer than we are willing to wait is not shortened: GitHub says not to retry before
+	// it has elapsed, so the request is not repeated at all and the caller gets the error.
+	tooLong := retryAfter > c.cfg.MaxRetryWait
 
 	limited := code == http.StatusTooManyRequests ||
 		(code == http.StatusForbidden && (h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0"))
@@ -456,11 +458,11 @@ func (c *Client) statusError(resp *http.Response, shown string) outcome {
 			rl.Primary = true
 			return fail(rl)
 		}
-		return outcome{err: rl, retry: true, wait: capped}
+		return outcome{err: rl, retry: !tooLong, wait: retryAfter}
 	}
 	se := &StatusError{URL: shown, Code: code}
 	if code >= 500 {
-		return outcome{err: se, retry: true, wait: capped}
+		return outcome{err: se, retry: !tooLong, wait: retryAfter}
 	}
 	return fail(se)
 }

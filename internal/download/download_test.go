@@ -318,13 +318,13 @@ func TestClientErrorsFailFast(t *testing.T) {
 	}
 }
 
-func TestRetryAfterIsHonouredAndCapped(t *testing.T) {
+func TestRetryAfterIsHonoured(t *testing.T) {
 	cases := []struct {
 		header string
 		want   time.Duration
 	}{
 		{"2", 2 * time.Second},
-		{"3600", 60 * time.Second},
+		{"60", 60 * time.Second}, // exactly the cap
 	}
 	for _, c := range cases {
 		t.Run(c.header, func(t *testing.T) {
@@ -536,5 +536,35 @@ func TestFetchNeedsASizeCap(t *testing.T) {
 	}
 	if n := len(r.srv.Requests()); n != 0 {
 		t.Errorf("%d requests were made", n)
+	}
+}
+
+// A pause longer than the cap is not shortened to the cap: GitHub's rule is to not retry before
+// Retry-After has elapsed, and repeating the request early is what gets a client blocked.
+func TestRetryAfterBeyondTheCapIsNotRetriedEarly(t *testing.T) {
+	for _, status := range []int{429, 403, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			r := newRig(t, "", nil, nil)
+			r.srv.Inject(fakerelease.Fault{
+				PathContains: "/releases/download/", Status: status,
+				Header: map[string]string{"Retry-After": "3600"},
+			})
+			_, err := r.fetch(r.webAsset())
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if n := r.srv.RequestCount("/releases/download/"); n != 1 {
+				t.Errorf("requests = %d, want 1 (no early retry)", n)
+			}
+			if got := r.sleep.got(); len(got) != 0 {
+				t.Errorf("sleeps = %v, want none", got)
+			}
+			if status != 503 {
+				var rl *download.RateLimitError
+				if !errors.As(err, &rl) || rl.RetryAfter != time.Hour {
+					t.Errorf("err = %v, want a *RateLimitError carrying RetryAfter 1h", err)
+				}
+			}
+		})
 	}
 }
