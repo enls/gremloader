@@ -50,8 +50,14 @@ if [ "$goos" = "windows" ]; then
   (cd "$stage" && zip -X -r -q "$out" "$name")
 else
   out="$outdir/$name.tar.gz"
-  tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@${epoch}" \
-    -C "$stage" -cf - "$name" | gzip -n -9 > "$out"
+  # The binary's mode is set explicitly (0755), not read from the filesystem: a Windows host has
+  # no exec bit, and the archive must come out the same wherever it is built. The binary sorts
+  # last ("gremloader" after the upper-case names), so appending it keeps the sorted order.
+  tarfile="$stage/$name.tar"
+  common=(--owner=0 --group=0 --numeric-owner --mtime="@${epoch}")
+  tar "${common[@]}" --sort=name -C "$stage" --exclude="$name/$bin" -cf "$tarfile" "$name"
+  tar "${common[@]}" --mode=0755 -C "$stage" -rf "$tarfile" "$name/$bin"
+  gzip -n -9 < "$tarfile" > "$out"
 fi
 
 echo "$out"

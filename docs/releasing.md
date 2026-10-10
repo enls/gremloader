@@ -63,7 +63,8 @@ scripts/build-release.sh v0.0.0-test linux amd64 /tmp/out
 ```
 
 Needs `go`, `tar`, `gzip` (and `zip` for Windows targets). The same commit built twice gives the
-same bytes.
+same bytes, on any host: the linux archives rebuilt on a Windows PC matched the hashes CI published for
+v0.0.1-rc.1. Windows `.zip` archives have not been compared.
 
 ## If a release is bad
 
