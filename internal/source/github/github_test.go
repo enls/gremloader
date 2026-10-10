@@ -735,3 +735,30 @@ func TestExactAssetNameWinsOverGlobSyntax(t *testing.T) {
 		t.Errorf("selected %q", a.Name)
 	}
 }
+
+// Warnings are shown on the terminal and written to the event log, so nothing from the network may
+// reach them raw: a tag is untrusted until ValidTag has passed it.
+func TestWarningsNeverCarryAnUnvalidatedTag(t *testing.T) {
+	const list = `[{"tag_name":"v1\u001b[2J\u001b]0;pwned\u0007","draft":false,"prerelease":false,
+	  "published_at":"2026-01-02T00:00:00Z",
+	  "assets":[{"id":1,"name":"a/b","state":"uploaded","size":1},
+	            {"id":2,"name":"c.zip","state":"starter","size":1},
+	            {"id":3,"name":"d.zip","state":"uploaded","size":1,"digest":"md5:abc"}]},
+	 {"tag_name":"v1.0.0","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z","assets":[]}]`
+	r := newRaw(t, map[string]http.HandlerFunc{"/api/repos/o/r/releases": body(list)})
+	l, err := r.source(t, "tok").List(context.Background(), github.Query{Repo: "o/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Warnings) == 0 {
+		t.Fatal("no warnings; the test is not exercising anything")
+	}
+	for _, w := range l.Warnings {
+		for _, c := range w {
+			if c < 0x20 || c == 0x7f {
+				t.Errorf("warning carries control character %q: %q", c, w)
+				break
+			}
+		}
+	}
+}
