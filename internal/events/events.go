@@ -9,6 +9,7 @@ package events
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,9 +17,17 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/redact"
+)
+
+// Limits. A line is bounded when it is written so that the log can always be read back: Scan holds
+// one line at a time, up to maxLine, and skips anything longer.
+const (
+	maxLine  = 1 << 20
+	maxField = 16 << 10 // longest Msg or URL written; the rest is cut and marked
 )
 
 // Levels.
@@ -108,6 +117,19 @@ func (l *Logger) open() error {
 	return nil
 }
 
+// shorten cuts s to at most limit bytes (on a character boundary) and marks the cut.
+func shorten(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	const mark = "...[truncated]"
+	cut := max(limit-len(mark), 0)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + mark
+}
+
 // endsWithNewline reports whether the last byte of the file at path is a newline. Any doubt (it
 // cannot be read) counts as yes: a stray blank line is harmless, a failed open is not.
 func endsWithNewline(path string, size int64) bool {
@@ -132,8 +154,8 @@ func (l *Logger) Emit(e Event) error {
 	if e.Level == "" {
 		e.Level = Info
 	}
-	e.Msg = redact.Text(e.Msg)
-	e.URL = redact.URL(e.URL)
+	e.Msg = shorten(redact.Text(e.Msg), maxField)
+	e.URL = shorten(redact.URL(e.URL), maxField)
 
 	line, err := json.Marshal(e)
 	if err != nil {
@@ -193,19 +215,29 @@ func (l *Logger) Close() error {
 // Scan reads events from r, skipping lines that are not valid events (a torn last line after a
 // crash, a hand edit). It returns the events and how many lines were skipped.
 func Scan(r io.Reader) (events []Event, skipped int, err error) {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
+	br := bufio.NewReaderSize(r, maxLine)
+	for {
+		line, rerr := br.ReadSlice('\n')
+		tooLong := false
+		for rerr == bufio.ErrBufferFull { // a line we cannot hold: drop the rest of it
+			tooLong = true
+			_, rerr = br.ReadSlice('\n')
 		}
-		var e Event
-		if json.Unmarshal(line, &e) != nil || e.Event == "" {
+		if tooLong {
 			skipped++
-			continue
+		} else if line = bytes.TrimSpace(line); len(line) > 0 {
+			var e Event
+			if json.Unmarshal(line, &e) != nil || e.Event == "" {
+				skipped++
+			} else {
+				events = append(events, e)
+			}
 		}
-		events = append(events, e)
+		if rerr != nil {
+			if rerr == io.EOF {
+				rerr = nil
+			}
+			return events, skipped, rerr
+		}
 	}
-	return events, skipped, sc.Err()
 }

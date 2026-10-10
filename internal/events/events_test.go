@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/enls/gremloader/internal/clock"
 )
@@ -243,5 +244,53 @@ func TestEmitAfterATornTailStartsANewLine(t *testing.T) {
 	}
 	if len(evs) != 2 || evs[0].Event != "first" || evs[1].Event != "after" || skipped != 1 {
 		t.Errorf("events = %+v, skipped %d; want first and after, with the torn line skipped", evs, skipped)
+	}
+}
+
+// One enormous message must not make the log unreadable: Emit bounds what it writes, and Scan
+// skips a line it cannot hold instead of stopping there.
+func TestOversizedMessageDoesNotHideLaterEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	l, err := Open(path, WithClock(clock.NewFake(t0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Emit(Event{Event: "big", Msg: strings.Repeat("x", 3<<20)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Emit(Event{Event: "small"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, _, err := Scan(bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(evs) != 2 || evs[1].Event != "small" {
+		t.Errorf("events = %d, want big (shortened) and small", len(evs))
+	}
+
+	// A log written elsewhere (or by an older build) can still contain such a line.
+	huge := strings.Repeat("y", 2<<20)
+	in := `{"ts":"2026-10-11T15:00:00Z","event":"a"}` + "\n" + huge + "\n" + `{"ts":"2026-10-11T15:00:00Z","event":"b"}` + "\n"
+	evs, skipped, err := Scan(strings.NewReader(in))
+	if err != nil || len(evs) != 2 || skipped != 1 {
+		t.Errorf("Scan of an over-long line: %d events, skipped %d, err %v", len(evs), skipped, err)
+	}
+}
+
+func TestShortenCutsOnACharacterBoundary(t *testing.T) {
+	s := strings.Repeat("é", 100) // two bytes each
+	got := shorten(s, 51)
+	if len(got) > 51 || !utf8.ValidString(got) || !strings.HasSuffix(got, "[truncated]") {
+		t.Errorf("shorten = %q (%d bytes)", got, len(got))
+	}
+	if shorten("short", 51) != "short" {
+		t.Error("a short string was changed")
 	}
 }
