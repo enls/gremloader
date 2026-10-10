@@ -22,8 +22,12 @@
 package fakerelease
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -49,15 +53,20 @@ type Release struct {
 	Draft       bool
 	Prerelease  bool
 	PublishedAt time.Time // defaults to the server clock's now
-	Assets      []Asset
+	// CreatedAt defaults to PublishedAt. GitHub orders "latest" and the release list by creation
+	// time, not publish time; set it earlier to reproduce a draft that was published long after.
+	CreatedAt time.Time
+	Assets    []Asset
 }
 
-// Fault makes matching requests misbehave. It applies to both roots.
+// Fault makes matching requests misbehave. It applies to every root.
 type Fault struct {
 	// PathContains selects requests whose URL path contains this text.
 	PathContains string
 	// Status, if non-zero, is returned instead of the normal response.
 	Status int
+	// Header is added to the faulted response (e.g. "Retry-After": "2").
+	Header map[string]string
 	// TruncateAfter, if positive, serves the normal response but closes the connection after this
 	// many body bytes, so the client sees a short read against the advertised Content-Length.
 	TruncateAfter int
@@ -67,10 +76,13 @@ type Fault struct {
 
 // Request is one request the server saw.
 type Request struct {
-	Method string
-	Path   string // path only, no query
-	Accept string
-	Auth   string // the Authorization header, verbatim
+	Method      string
+	Path        string // path only, no query
+	Accept      string
+	Auth        string // the Authorization header, verbatim
+	IfNoneMatch string
+	Origin      string // which root served it: "api", "web" or "cdn"
+	Query       string // raw query string (the CDN's signed parameters live here)
 }
 
 // Option configures a Server.
@@ -78,6 +90,11 @@ type Option func(*Server)
 
 // WithClock sets the clock used for default publish times and rate-limit reset times.
 func WithClock(c clock.Clock) Option { return func(s *Server) { s.clock = c } }
+
+// WithCDN makes every asset download answer 302 to a second server (a different host:port), the
+// way github.com redirects to release-assets.githubusercontent.com with a signed, expiring URL.
+// Without it downloads are served directly.
+func WithCDN() Option { return func(s *Server) { s.useCDN = true } }
 
 type storedAsset struct {
 	id          int64
@@ -98,13 +115,18 @@ type Server struct {
 	srv   *httptest.Server
 	clock clock.Clock
 
-	mu          sync.Mutex
-	releases    []*storedRelease
-	assets      map[int64]*storedAsset
-	nextID      int64
-	rateLimited bool
-	faults      []*Fault
-	requests    []Request
+	useCDN bool
+	cdn    *httptest.Server
+
+	mu             sync.Mutex
+	releases       []*storedRelease
+	assets         map[int64]*storedAsset
+	nextID         int64
+	rateLimited    bool
+	quotaLimit     int // 0 = unlimited
+	quotaRemaining int
+	faults         []*Fault
+	requests       []Request
 }
 
 // TB is the part of testing.TB this package needs. Taking an interface keeps the "testing"
@@ -136,11 +158,21 @@ func New(tb TB, opts ...Option) *Server {
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/latest", s.webLatest)
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/tag/{tag}", s.webTag)
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/download/{tag}/{name}", s.webDownload)
+	mux.HandleFunc("GET /web/{owner}/{repo}/releases.atom", s.webAtom)
 
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.serve(mux, w, r)
 	}))
 	tb.Cleanup(s.srv.Close)
+
+	if s.useCDN {
+		cdnMux := http.NewServeMux()
+		cdnMux.HandleFunc("GET /cdn/{id}/{name}", s.cdnAsset)
+		s.cdn = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.serve(cdnMux, w, r)
+		}))
+		tb.Cleanup(s.cdn.Close)
+	}
 	return s
 }
 
@@ -149,6 +181,14 @@ func (s *Server) APIBase() string { return s.srv.URL + "/api" }
 
 // WebBase is the root to use in place of https://github.com.
 func (s *Server) WebBase() string { return s.srv.URL + "/web" }
+
+// CDNBase is the second server's root ("" unless WithCDN was given).
+func (s *Server) CDNBase() string {
+	if s.cdn == nil {
+		return ""
+	}
+	return s.cdn.URL + "/cdn"
+}
 
 // Client returns an http.Client that talks to the fake (and honours its TLS-free transport).
 func (s *Server) Client() *http.Client { return s.srv.Client() }
@@ -164,6 +204,9 @@ func (s *Server) AddRelease(owner, repo string, r Release) {
 	}
 	if r.PublishedAt.IsZero() {
 		r.PublishedAt = s.clock.Now()
+	}
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = r.PublishedAt
 	}
 
 	s.mu.Lock()
@@ -190,6 +233,27 @@ func (s *Server) SetRateLimited(on bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.rateLimited = on
+}
+
+// SetQuota simulates GitHub's unauthenticated primary rate limit: after limit API requests the
+// API answers 403 with X-RateLimit-Remaining: 0. Every API response carries the X-RateLimit-*
+// headers. As observed against the real service, a 304 Not Modified still costs one unit;
+// requests that carry an Authorization header are not counted (they have their own, larger
+// quota). The website roots are never counted. limit <= 0 turns the simulation off.
+func (s *Server) SetQuota(limit int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit < 0 {
+		limit = 0
+	}
+	s.quotaLimit, s.quotaRemaining = limit, limit
+}
+
+// QuotaRemaining reports the simulated remaining API requests (0 when the simulation is off).
+func (s *Server) QuotaRemaining() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.quotaRemaining
 }
 
 // Inject adds a fault. Faults are consulted in the order they were added.
@@ -239,21 +303,53 @@ func (s *Server) AssetURL(owner, repo, tag, name string) string {
 
 // serve wraps every request with logging, rate limiting and fault injection.
 func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	origin := "web"
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/"):
+		origin = "api"
+	case strings.HasPrefix(r.URL.Path, "/cdn/"):
+		origin = "cdn"
+	}
+
 	s.mu.Lock()
 	s.requests = append(s.requests, Request{
-		Method: r.Method,
-		Path:   r.URL.Path,
-		Accept: r.Header.Get("Accept"),
-		Auth:   r.Header.Get("Authorization"),
+		Method:      r.Method,
+		Path:        r.URL.Path,
+		Accept:      r.Header.Get("Accept"),
+		Auth:        r.Header.Get("Authorization"),
+		IfNoneMatch: r.Header.Get("If-None-Match"),
+		Origin:      origin,
+		Query:       r.URL.RawQuery,
 	})
-	limited := s.rateLimited && strings.HasPrefix(r.URL.Path, "/api/")
+	limited := s.rateLimited && origin == "api"
+	remaining, limit := -1, 0
+	if origin == "api" && s.quotaLimit > 0 {
+		limit = s.quotaLimit
+		if r.Header.Get("Authorization") == "" {
+			if s.quotaRemaining == 0 {
+				limited = true
+			} else {
+				s.quotaRemaining--
+			}
+		}
+		remaining = s.quotaRemaining
+	}
 	fault := s.takeFault(r.URL.Path)
 	s.mu.Unlock()
+
+	if origin == "api" && limit > 0 {
+		reset := s.clock.Now().Add(time.Hour)
+		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
+		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
+	}
 
 	if limited {
 		reset := s.clock.Now().Add(time.Hour)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("X-RateLimit-Limit", "60")
+		if limit == 0 {
+			w.Header().Set("X-RateLimit-Limit", "60")
+		}
 		w.Header().Set("X-RateLimit-Remaining", "0")
 		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
 		w.WriteHeader(http.StatusForbidden)
@@ -265,6 +361,9 @@ func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request
 	}
 
 	if fault != nil && fault.Status != 0 {
+		for k, v := range fault.Header {
+			w.Header().Set(k, v)
+		}
 		http.Error(w, "injected fault", fault.Status)
 		return
 	}
@@ -317,12 +416,16 @@ func (t *truncatingWriter) Write(p []byte) (int, error) {
 // ---- REST API ----
 
 type apiAsset struct {
-	ID                 int64  `json:"id"`
-	Name               string `json:"name"`
-	ContentType        string `json:"content_type"`
-	Size               int    `json:"size"`
-	URL                string `json:"url"`
-	BrowserDownloadURL string `json:"browser_download_url"`
+	ID                 int64     `json:"id"`
+	Name               string    `json:"name"`
+	ContentType        string    `json:"content_type"`
+	State              string    `json:"state"`
+	Size               int       `json:"size"`
+	Digest             string    `json:"digest"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	URL                string    `json:"url"`
+	BrowserDownloadURL string    `json:"browser_download_url"`
 }
 
 type apiRelease struct {
@@ -331,13 +434,14 @@ type apiRelease struct {
 	Name        string     `json:"name"`
 	Draft       bool       `json:"draft"`
 	Prerelease  bool       `json:"prerelease"`
+	CreatedAt   time.Time  `json:"created_at"`
 	PublishedAt time.Time  `json:"published_at"`
 	HTMLURL     string     `json:"html_url"`
 	Assets      []apiAsset `json:"assets"`
 }
 
-// visible returns the repository's non-draft releases, newest first (ties: added later first).
-// Caller holds s.mu.
+// visible returns the repository's non-draft releases, newest first by creation time as GitHub
+// does (ties: published later, then added later). Caller holds s.mu.
 func (s *Server) visible(owner, repo string) []*storedRelease {
 	var out []*storedRelease
 	for _, r := range s.releases {
@@ -346,7 +450,10 @@ func (s *Server) visible(owner, repo string) []*storedRelease {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].PublishedAt.Equal(out[j].PublishedAt) {
+		switch {
+		case !out[i].CreatedAt.Equal(out[j].CreatedAt):
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		case !out[i].PublishedAt.Equal(out[j].PublishedAt):
 			return out[i].PublishedAt.After(out[j].PublishedAt)
 		}
 		return out[i].id > out[j].id
@@ -361,6 +468,7 @@ func (s *Server) toAPI(r *storedRelease) apiRelease {
 		Name:        r.Name,
 		Draft:       r.Draft,
 		Prerelease:  r.Prerelease,
+		CreatedAt:   r.CreatedAt.UTC(),
 		PublishedAt: r.PublishedAt.UTC(),
 		HTMLURL:     fmt.Sprintf("%s/%s/%s/releases/tag/%s", s.WebBase(), r.owner, r.repo, r.Tag),
 		Assets:      []apiAsset{},
@@ -378,11 +486,16 @@ func (s *Server) toAPI(r *storedRelease) apiRelease {
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
+		sum := sha256.Sum256(a.Data)
 		out.Assets = append(out.Assets, apiAsset{
 			ID:                 id,
 			Name:               a.Name,
 			ContentType:        ct,
+			State:              "uploaded",
 			Size:               len(a.Data),
+			Digest:             "sha256:" + hex.EncodeToString(sum[:]),
+			CreatedAt:          r.CreatedAt.UTC(),
+			UpdatedAt:          r.PublishedAt.UTC(),
 			URL:                fmt.Sprintf("%s/repos/%s/%s/releases/assets/%d", s.APIBase(), a.owner, a.repo, id),
 			BrowserDownloadURL: s.AssetURL(a.owner, a.repo, a.tag, a.Name),
 		})
@@ -390,14 +503,30 @@ func (s *Server) toAPI(r *storedRelease) apiRelease {
 	return out
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+// writeJSON answers with v, adds a weak ETag, and honours If-None-Match with a 304 (which, like
+// the real service, still counted against the quota in serve()).
+func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if status == http.StatusOK {
+		sum := sha256.Sum256(body)
+		etag := `W/"` + hex.EncodeToString(sum[:16]) + `"`
+		w.Header().Set("ETag", etag)
+		if r != nil && r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(body, '\n'))
 }
 
-func notFound(w http.ResponseWriter) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
+func notFound(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, http.StatusNotFound, map[string]string{"message": "Not Found"})
 }
 
 func (s *Server) apiLatest(w http.ResponseWriter, r *http.Request) {
@@ -405,11 +534,11 @@ func (s *Server) apiLatest(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	for _, rel := range s.visible(r.PathValue("owner"), r.PathValue("repo")) {
 		if !rel.Prerelease {
-			writeJSON(w, http.StatusOK, s.toAPI(rel))
+			writeJSON(w, r, http.StatusOK, s.toAPI(rel))
 			return
 		}
 	}
-	notFound(w)
+	notFound(w, r)
 }
 
 func (s *Server) apiList(w http.ResponseWriter, r *http.Request) {
@@ -419,7 +548,7 @@ func (s *Server) apiList(w http.ResponseWriter, r *http.Request) {
 	for _, rel := range s.visible(r.PathValue("owner"), r.PathValue("repo")) {
 		out = append(out, s.toAPI(rel))
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, r, http.StatusOK, out)
 }
 
 func (s *Server) apiByTag(w http.ResponseWriter, r *http.Request) {
@@ -427,24 +556,51 @@ func (s *Server) apiByTag(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	for _, rel := range s.visible(r.PathValue("owner"), r.PathValue("repo")) {
 		if rel.Tag == r.PathValue("tag") {
-			writeJSON(w, http.StatusOK, s.toAPI(rel))
+			writeJSON(w, r, http.StatusOK, s.toAPI(rel))
 			return
 		}
 	}
-	notFound(w)
+	notFound(w, r)
 }
 
 func (s *Server) apiAsset(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		notFound(w)
+		notFound(w, r)
 		return
 	}
 	s.mu.Lock()
 	a := s.assets[id]
 	s.mu.Unlock()
 	if a == nil || a.owner != r.PathValue("owner") || a.repo != r.PathValue("repo") {
-		notFound(w)
+		notFound(w, r)
+		return
+	}
+	s.deliver(w, r, a)
+}
+
+// deliver serves an asset directly, or redirects to the CDN root when WithCDN is on. The
+// redirect carries credential-looking query parameters so that redaction has something to bite.
+func (s *Server) deliver(w http.ResponseWriter, r *http.Request, a *storedAsset) {
+	if s.cdn != nil {
+		loc := fmt.Sprintf("%s/%d/%s?sp=r&sv=2018-11-09&sig=FAKESIG%d&jwt=eyJFAKE.JWT.%d", s.CDNBase(), a.id, a.Name, a.id, a.id)
+		http.Redirect(w, r, loc, http.StatusFound)
+		return
+	}
+	serveBytes(w, a.Asset)
+}
+
+func (s *Server) cdnAsset(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.mu.Lock()
+	a := s.assets[id]
+	s.mu.Unlock()
+	if a == nil || a.Name != r.PathValue("name") || !strings.HasPrefix(r.URL.Query().Get("sig"), "FAKESIG") {
+		http.NotFound(w, r)
 		return
 	}
 	serveBytes(w, a.Asset)
@@ -501,7 +657,61 @@ func (s *Server) webDownload(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	serveBytes(w, found.Asset)
+	s.deliver(w, r, found)
+}
+
+// atomFeed is the shape of github.com/{owner}/{repo}/releases.atom (the parts clients read).
+type atomFeed struct {
+	XMLName xml.Name    `xml:"http://www.w3.org/2005/Atom feed"`
+	ID      string      `xml:"id"`
+	Title   string      `xml:"title"`
+	Updated string      `xml:"updated"`
+	Entries []atomEntry `xml:"entry"`
+}
+
+type atomEntry struct {
+	ID      string   `xml:"id"`
+	Updated string   `xml:"updated"`
+	Link    atomLink `xml:"link"`
+	Title   string   `xml:"title"`
+}
+
+type atomLink struct {
+	Rel  string `xml:"rel,attr"`
+	Type string `xml:"type,attr"`
+	Href string `xml:"href,attr"`
+}
+
+// webAtom serves the release feed: every non-draft release, prereleases included, newest first.
+// As on GitHub the entry's <updated> is the publish time and nothing says "prerelease".
+func (s *Server) webAtom(w http.ResponseWriter, r *http.Request) {
+	owner, repo := r.PathValue("owner"), r.PathValue("repo")
+	s.mu.Lock()
+	rels := s.visible(owner, repo)
+	feed := atomFeed{
+		ID:      fmt.Sprintf("tag:github.com,2008:%s/%s/%s/releases", s.WebBase(), owner, repo),
+		Title:   "Release notes from " + repo,
+		Updated: s.clock.Now().UTC().Format(time.RFC3339),
+	}
+	if len(rels) > 0 {
+		feed.Updated = rels[0].CreatedAt.UTC().Format(time.RFC3339)
+	}
+	for _, rel := range rels {
+		feed.Entries = append(feed.Entries, atomEntry{
+			ID:      fmt.Sprintf("tag:github.com,2008:Repository/%d/%s", rel.id, rel.Tag),
+			Updated: rel.PublishedAt.UTC().Format(time.RFC3339),
+			Link: atomLink{Rel: "alternate", Type: "text/html",
+				Href: fmt.Sprintf("%s/%s/%s/releases/tag/%s", s.WebBase(), owner, repo, rel.Tag)},
+			Title: rel.Name,
+		})
+	}
+	s.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
+	_, _ = io.WriteString(w, xml.Header)
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	_ = enc.Encode(feed)
 }
 
 func serveBytes(w http.ResponseWriter, a Asset) {

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/storytold/photocraft/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/storytold/photocraft/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/storytold/photocraft/releases.atom"/>
+  <title>Release notes from photocraft</title>
+  <updated>2026-10-10T02:11:13Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.6.0</id>
+    <updated>2026-10-10T02:51:42Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.6.0"/>
+    <title>PhotoCraft v0.6.0</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.5.0</id>
+    <updated>2026-10-08T14:52:50Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.5.0"/>
+    <title>PhotoCraft v0.5.0</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.3.0</id>
+    <updated>2026-10-07T10:33:19Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.3.0"/>
+    <title>PhotoCraft v0.3.0</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.2.0</id>
+    <updated>2026-10-05T04:42:33Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.2.0"/>
+    <title>PhotoCraft v0.2.0</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.1.1</id>
+    <updated>2026-10-03T14:24:16Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.1.1"/>
+    <title>PhotoCraft v0.1.1</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.1.1-rc.5</id>
+    <updated>2026-10-02T22:30:31Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.1.1-rc.5"/>
+    <title>PhotoCraft v0.1.1-rc.5</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.1.1-rc.4</id>
+    <updated>2026-10-02T15:17:22Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.1.1-rc.4"/>
+    <title>PhotoCraft v0.1.1-rc.4</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1398080271/v0.1.0</id>
+    <updated>2026-10-02T00:09:14Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/storytold/photocraft/releases/tag/v0.1.0"/>
+    <title>PhotoCraft v0.1.0</title>
+    <content type="html"><!-- release notes removed from this fixture --></content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+</feed>

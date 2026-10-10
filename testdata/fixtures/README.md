@@ -13,3 +13,17 @@ actually publishes and not against what we assume it does. These files are marke
 
 The large release assets themselves are deliberately not here. Tests that need an archive of a
 specific shape build one in memory.
+
+## Added for Phase 1 (M0)
+
+| Path | Origin | Notes |
+|---|---|---|
+| `photocraft-v0.6.0/release-latest.json` | `GET api.github.com/repos/storytold/photocraft/releases/latest`, captured as returned (2026-10-10) | 23 assets, each with `digest` and `state: "uploaded"`; `created_at` precedes `published_at` (assets are uploaded in between) |
+| `photocraft-v0.6.0/releases.atom` | `github.com/storytold/photocraft/releases.atom`, captured 2026-10-10 | **Trimmed:** every `<content>` element (release notes, ~1 MB) was replaced by a comment; everything else is byte-exact. 8 entries, newest first, prereleases included, no prerelease flag |
+| `ghcli-v2.102.0/gh_2.102.0_checksums.txt` | `cli/cli` release v2.102.0 asset, captured as published (1,971 bytes) | A real, attested asset: its digest is `sha256:afe49e9a...e8d`. Used for native attestation verification in M8 |
+| `ghcli-v2.102.0/gh_2.102.0_checksums.txt.bundle.sn` | the `bundle_url` payload for that asset, captured as returned | **Snappy-compressed** Sigstore bundle JSON (`application/x-snappy`); needs a snappy decoder (M8) |
+| `ghcli-v2.102.0/attestations-response.json` | `GET api.github.com/repos/cli/cli/attestations/sha256:...` | Shows `bundle: null` + `bundle_url`. The signed query string of `bundle_url` was replaced by `?REDACTED` |
+
+Facts these fixtures pin down (see the Phase 1 plan, E.8): GitHub release assets carry `digest`
+and `state`; the author's `SHA256SUMS.txt` and GitHub's `digest` agree for every PhotoCraft
+asset (checked by a test); Craft apps publish no attestations, cli/cli does.
