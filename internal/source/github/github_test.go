@@ -781,3 +781,26 @@ func TestOtherPackagesTagsInAMonorepoAreNotWarnedAbout(t *testing.T) {
 		t.Errorf("warnings = %q, want exactly one, for app-vNEXT", l.Warnings)
 	}
 }
+
+// Only a link whose relation is "alternate" is the entry's own page; a "related" or "enclosure"
+// link may point anywhere in the repository, so a tag taken from it would be somebody else's.
+func TestAtomLinksOtherThanAlternateAreIgnored(t *testing.T) {
+	const feed = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+	 <entry><updated>2026-01-03T00:00:00Z</updated><title>ok</title>
+	   <link rel="related" href="https://github.com/o/r/releases/tag/v9.9.9"/>
+	   <link rel="alternate" href="https://github.com/o/r/releases/tag/v1.2.0"/></entry>
+	 <entry><updated>2026-01-02T00:00:00Z</updated><title>only-related</title>
+	   <link rel="enclosure" href="https://github.com/o/r/releases/tag/v8.8.8"/></entry>
+	</feed>`
+	r := newRaw(t, map[string]http.HandlerFunc{
+		"/web/o/r/releases/latest": redirect("/web/o/r/releases/tag/v1.2.0", http.StatusFound),
+		"/web/o/r/releases.atom":   body(feed),
+	})
+	l, err := r.source(t, "").List(context.Background(), github.Query{Repo: "o/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(tags(l), ","); got != "v1.2.0" {
+		t.Errorf("releases = %s, want only v1.2.0", got)
+	}
+}

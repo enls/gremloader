@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -587,5 +589,73 @@ func TestAbsurdRetryAfterDoesNotOverflow(t *testing.T) {
 	}
 	if n := r.srv.RequestCount("/releases/download/"); n != 1 {
 		t.Errorf("requests = %d, want 1", n)
+	}
+}
+
+// A stall can happen before the status line arrives, not only mid-body; both are retried.
+func TestStallBeforeTheHeadersIsRetried(t *testing.T) {
+	var hits atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		<-r.Context().Done() // never answers
+	}))
+	t.Cleanup(ts.Close)
+
+	sl := &sleeper{}
+	c := download.New(download.Config{
+		Policy:       download.Policy{Hosts: []string{"127.0.0.1"}, AllowHTTP: true},
+		StallTimeout: 150 * time.Millisecond,
+		Attempts:     2,
+		Sleep:        sl.Sleep,
+	})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x"})
+	if !errors.Is(err, download.ErrStalled) {
+		t.Fatalf("err = %v, want ErrStalled", err)
+	}
+	if hits.Load() != 2 {
+		t.Errorf("hits = %d, want 2 attempts", hits.Load())
+	}
+}
+
+// Get has its own cap, separate from Fetch's, and an unannounced (chunked) body must hit it.
+func TestGetStopsAnUnannouncedBodyOverTheCap(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chunk := bytes.Repeat([]byte("x"), 4096)
+		for range 64 {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}))
+	t.Cleanup(ts.Close)
+
+	c := download.New(download.Config{Policy: download.Policy{Hosts: []string{"127.0.0.1"}, AllowHTTP: true}})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x", MaxBytes: 10000})
+	if !errors.Is(err, download.ErrTooLarge) {
+		t.Fatalf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+// A certificate that does not verify will not verify on the next attempt either: fail at once,
+// and never retry into a different answer.
+func TestCertificateFailureIsNotRetried(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("hello"))
+	}))
+	ts.Config.ErrorLog = log.New(io.Discard, "", 0) // the handshake errors are the point
+	t.Cleanup(ts.Close)
+
+	sl := &sleeper{}
+	c := download.New(download.Config{
+		Policy: download.Policy{Hosts: []string{"127.0.0.1"}},
+		Sleep:  sl.Sleep,
+	})
+	_, err := c.Get(context.Background(), download.Request{URL: ts.URL + "/x"})
+	if err == nil {
+		t.Fatal("an untrusted certificate was accepted")
+	}
+	if got := sl.got(); len(got) != 0 {
+		t.Errorf("sleeps = %v; a certificate failure must not be retried", got)
 	}
 }
