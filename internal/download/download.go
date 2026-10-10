@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -476,6 +477,9 @@ func (c *Client) retryAfter(v string) time.Duration {
 	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
 		if secs < 0 {
 			return 0
+		}
+		if secs > int64(math.MaxInt64/int64(time.Second)) {
+			return time.Duration(math.MaxInt64) // not a wrapped-around negative
 		}
 		return time.Duration(secs) * time.Second
 	}

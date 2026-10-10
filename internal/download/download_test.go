@@ -568,3 +568,24 @@ func TestRetryAfterBeyondTheCapIsNotRetriedEarly(t *testing.T) {
 		})
 	}
 }
+
+// A Retry-After too big for a time.Duration must not wrap around (to a negative pause that reads as
+// "none" and retries immediately).
+func TestAbsurdRetryAfterDoesNotOverflow(t *testing.T) {
+	r := newRig(t, "", nil, nil)
+	r.srv.Inject(fakerelease.Fault{
+		PathContains: "/releases/download/", Status: 429,
+		Header: map[string]string{"Retry-After": "9223372037"},
+	})
+	_, err := r.fetch(r.webAsset())
+	var rl *download.RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want *RateLimitError", err)
+	}
+	if rl.RetryAfter <= time.Hour {
+		t.Errorf("RetryAfter = %v, want a huge positive pause", rl.RetryAfter)
+	}
+	if n := r.srv.RequestCount("/releases/download/"); n != 1 {
+		t.Errorf("requests = %d, want 1", n)
+	}
+}
