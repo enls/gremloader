@@ -294,3 +294,23 @@ func TestShortenCutsOnACharacterBoundary(t *testing.T) {
 		t.Error("a short string was changed")
 	}
 }
+
+// A failed reopen after rotation must not disable the log for the rest of the process.
+func TestEmitRecoversWhenTheFileWasNotReopened(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	l, err := Open(path, WithClock(clock.NewFake(t0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+	// What rotate leaves behind when its reopen fails (a scanner holding the file, say).
+	_ = l.f.Close()
+	l.f = nil
+
+	if err := l.Emit(Event{Event: "later"}); err != nil {
+		t.Fatalf("Emit after a failed reopen: %v", err)
+	}
+	if got := readLines(t, path); len(got) != 1 {
+		t.Errorf("lines = %v", got)
+	}
+}

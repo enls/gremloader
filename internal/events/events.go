@@ -73,6 +73,7 @@ type Logger struct {
 	mu      sync.Mutex
 	path    string
 	f       *os.File
+	closed  bool // Close was called; distinguishes "shut down" from "reopen failed"
 	size    int64
 	maxSize int64
 	keep    int
@@ -165,8 +166,13 @@ func (l *Logger) Emit(e Event) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.f == nil {
+	if l.closed {
 		return fmt.Errorf("event log is closed")
+	}
+	if l.f == nil { // a rotation could not reopen the file; try again rather than stay dark
+		if err := l.open(); err != nil {
+			return err
+		}
 	}
 	if l.size > 0 && l.size+int64(len(line)) > l.maxSize {
 		l.rotate() // best effort: on failure we keep appending to the current file
@@ -178,16 +184,14 @@ func (l *Logger) Emit(e Event) error {
 
 // rotate shifts path -> path.1 -> path.2 ... and drops the oldest. Called with l.mu held.
 func (l *Logger) rotate() {
-	if err := l.f.Close(); err != nil {
-		return
-	}
+	// Nothing is buffered, so an error from Close loses no data; the handle is unusable either way.
+	_ = l.f.Close()
 	l.f = nil
-	// If anything below fails the log keeps working: we reopen whatever file is at l.path.
+	// If anything below fails the log keeps working: we reopen whatever file is at l.path. If even
+	// that fails, l.f stays nil and the next Emit tries again.
 	defer func() {
 		if l.f == nil {
-			if err := l.open(); err != nil {
-				l.f = nil
-			}
+			_ = l.open()
 		}
 	}()
 	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep))
@@ -204,6 +208,7 @@ func (l *Logger) rotate() {
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closed = true
 	if l.f == nil {
 		return nil
 	}
