@@ -1,0 +1,13 @@
+# Text is LF in the repo and LF in the working tree, on every OS. Only the Windows
+# script types below are CRLF. (CraftWerk lost real time to line endings; a bare
+# `text=auto` would still check files out as CRLF on Windows.)
+* text=auto eol=lf
+
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+
+# Binary
+*.zip   binary
+*.tar   binary
+*.gz    binary
+*.png   binary

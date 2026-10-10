@@ -1,0 +1,26 @@
+# Local handoff notes: personal paths and details, never public
+HANDOFF.md
+
+# Build output
+dist/
+/gremloader
+/gremloader.exe
+
+# Go
+*.test
+*.out
+coverage.*
+vendor/
+
+# Machine-local GremLoader files (what the UI writes, what is installed here)
+*.local.toml
+state.json
+events.jsonl
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
