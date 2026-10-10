@@ -132,6 +132,20 @@ func TestFromTag(t *testing.T) {
 	if v, err := FromTag("1.2.0", ""); err != nil || v.String() != "1.2.0" {
 		t.Errorf("empty prefix: %v, %v", v, err)
 	}
+	// No prefix configured: the loose form applies in full, including the leading v. (Found by the
+	// GitHub source tests: the first version of FromTag rejected every plain "v1.2.3" tag.)
+	for tag, want := range map[string]string{"v1.2.3": "1.2.3", "V1.2.3": "1.2.3", "v0.1.1-rc.5": "0.1.1-rc.5", "v2": "2.0.0"} {
+		if v, err := FromTag(tag, ""); err != nil || v.String() != want {
+			t.Errorf("FromTag(%q, \"\") = %v, %v; want %s", tag, v, err, want)
+		}
+	}
+	// A configured prefix is exact: "app-" does not also strip a "v".
+	if v, err := FromTag("app-v1.2.3", "app-"); err == nil {
+		t.Errorf("FromTag(app-v1.2.3, app-) = %v, want error", v)
+	}
+	if v, err := FromTag("vv1.2.3", "v"); err == nil {
+		t.Errorf("FromTag(vv1.2.3, v) = %v, want error", v)
+	}
 	for _, tag := range []string{"1.2.0", "nightly", "v1.2.3/../x", "../../v1.0.0", "v1.0.0\n", ""} {
 		if v, err := FromTag(tag, "v"); err == nil {
 			t.Errorf("FromTag(%q) = %v, want error", tag, v)
