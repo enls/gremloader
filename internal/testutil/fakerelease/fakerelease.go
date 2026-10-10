@@ -97,6 +97,11 @@ func WithClock(c clock.Clock) Option { return func(s *Server) { s.clock = c } }
 // Without it downloads are served directly.
 func WithCDN() Option { return func(s *Server) { s.useCDN = true } }
 
+// WithFeedLimit sets how many releases releases.atom lists. github.com lists the 10 most recent,
+// which is the default here; serving every release would hide the monorepo case where a package's
+// own releases have scrolled out of the feed.
+func WithFeedLimit(n int) Option { return func(s *Server) { s.feedLimit = n } }
+
 type storedAsset struct {
 	id          int64
 	owner, repo string
@@ -116,8 +121,9 @@ type Server struct {
 	srv   *httptest.Server
 	clock clock.Clock
 
-	useCDN bool
-	cdn    *httptest.Server
+	useCDN    bool
+	cdn       *httptest.Server
+	feedLimit int // releases.atom entries; 0 means the default, 10
 
 	mu             sync.Mutex
 	releases       []*storedRelease
@@ -697,6 +703,13 @@ func (s *Server) webAtom(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(rels) > 0 {
 		feed.Updated = rels[0].CreatedAt.UTC().Format(time.RFC3339)
+	}
+	limit := s.feedLimit
+	if limit <= 0 {
+		limit = 10
+	}
+	if len(rels) > limit {
+		rels = rels[:limit]
 	}
 	for _, rel := range rels {
 		feed.Entries = append(feed.Entries, atomEntry{
