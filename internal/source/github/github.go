@@ -210,10 +210,22 @@ func (s *Source) List(ctx context.Context, q Query) (*Listing, error) {
 	return nil, err
 }
 
+// partialViewError is ErrNotFound as far as the website's feed goes. The feed shows only the most
+// recent releases, so "no usable tag in it" says nothing about the repository: the API list is
+// longer and may know the tag (a monorepo package whose releases have scrolled out of the feed).
+// Unlike a plain ErrNotFound, the other path is worth trying.
+type partialViewError struct{ msg string }
+
+func (e *partialViewError) Error() string        { return ErrNotFound.Error() + ": " + e.msg }
+func (e *partialViewError) Is(target error) bool { return target == ErrNotFound }
+
 // worthFallingOver reports whether trying the other path could give a different answer.
 func worthFallingOver(err error) bool {
 	var pe *download.PolicyError
+	var pv *partialViewError
 	switch {
+	case errors.As(err, &pv):
+		return true
 	case errors.Is(err, ErrNotFound), errors.Is(err, download.ErrTooLarge), errors.As(err, &pe):
 		return false
 	}

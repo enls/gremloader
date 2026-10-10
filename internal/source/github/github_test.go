@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -648,5 +649,39 @@ func TestRealPhotoCraftFeedAndRelease(t *testing.T) {
 	}
 	if _, err := src.SelectAsset(rel, "photocraft-0.6.0-macos-universal.zip"); err == nil {
 		t.Error("matched an asset that does not exist")
+	}
+}
+
+// A monorepo holds several packages' tags. The feed lists only the ten most recent releases, so a
+// package whose own releases have scrolled out of it sees no usable tag there. That is a gap in
+// what the feed shows, not "not found": the API list is longer and knows the tag.
+func TestWebPathWithNoUsableTagFallsOverToTheAPI(t *testing.T) {
+	e := newEnv(t, "")
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+	for i := 1; i <= 12; i++ {
+		e.srv.AddRelease("o", "mono", fakerelease.Release{
+			Tag:         fmt.Sprintf("lib-v1.%d.0", i),
+			PublishedAt: t0.AddDate(0, 0, i),
+		})
+	}
+
+	l := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if l.Via != github.ModeAPI || l.FellOver == "" {
+		t.Errorf("via %q, fell over %q; want the API path after the web path found nothing", l.Via, l.FellOver)
+	}
+	if got := tags(l); len(got) != 1 || got[0] != "app-v1.0.0" {
+		t.Errorf("releases = %v, want [app-v1.0.0]", got)
+	}
+}
+
+// And when the tag really is not there on either path, the answer is still "not found".
+func TestNoUsableTagOnEitherPathIsNotFound(t *testing.T) {
+	e := newEnv(t, "")
+	for i := 1; i <= 12; i++ {
+		e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: fmt.Sprintf("lib-v1.%d.0", i), PublishedAt: t0.AddDate(0, 0, i)})
+	}
+	_, err := e.src.List(context.Background(), github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
