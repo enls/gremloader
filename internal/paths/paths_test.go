@@ -208,3 +208,21 @@ func TestPackageNamesThatWindowsCannotUseAreRejected(t *testing.T) {
 		}
 	}
 }
+
+// A scheduled task or service can run with no user profile variable at all. On Windows nothing
+// else needs it when %APPDATA% and %LOCALAPPDATA% are set, so System must not fail on its own;
+// Resolve is the place that says what is missing.
+func TestSystemDoesNotFailOnAMissingHomeThatResolveDoesNotNeed(t *testing.T) {
+	for _, k := range []string{"HOME", "USERPROFILE", "GREMLOADER_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	_, err := Resolve(System())
+	if runtime.GOOS == "windows" && err != nil {
+		t.Errorf("Resolve: %v", err)
+	}
+	if runtime.GOOS != "windows" && (err == nil || !strings.Contains(err.Error(), "GREMLOADER_HOME")) {
+		t.Errorf("Resolve without a home: %v, want an error naming GREMLOADER_HOME", err)
+	}
+}

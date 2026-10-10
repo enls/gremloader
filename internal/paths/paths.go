@@ -29,16 +29,12 @@ type Env struct {
 	Home   string // the user's home directory
 }
 
-// System returns the real environment.
-func System() (Env, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// A GREMLOADER_HOME override still works without a home directory.
-		if os.Getenv("GREMLOADER_HOME") == "" {
-			return Env{}, fmt.Errorf("cannot find the home directory: %w", err)
-		}
-	}
-	return Env{GOOS: runtime.GOOS, Getenv: os.Getenv, Home: home}, nil
+// System returns the real environment. A missing home directory is not an error here: a
+// GREMLOADER_HOME override, or %APPDATA% and %LOCALAPPDATA% on Windows, make it unnecessary, and
+// Resolve reports it when a layout really needs it.
+func System() Env {
+	home, _ := os.UserHomeDir()
+	return Env{GOOS: runtime.GOOS, Getenv: os.Getenv, Home: home}
 }
 
 // Paths are the three base directories.
