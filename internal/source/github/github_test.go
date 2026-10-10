@@ -714,3 +714,24 @@ func TestRateLimitedPrereleaseChannelWithATokenDoesNotAskForOne(t *testing.T) {
 		t.Errorf("err = %v; a token is already configured", err)
 	}
 }
+
+// The pattern is a path.Match pattern, but an asset's own name must always select itself, even
+// when the name contains glob metacharacters.
+func TestExactAssetNameWinsOverGlobSyntax(t *testing.T) {
+	e := newEnv(t, "tok")
+	e.srv.AddRelease("o", "b", fakerelease.Release{
+		Tag: "v1.0.0",
+		Assets: []fakerelease.Asset{
+			{Name: "tool-[x64].zip", Data: appData},
+			{Name: "tool-x.zip", Data: appData},
+		},
+	})
+	l := e.list(t, github.Query{Repo: "o/b"})
+	a, err := e.src.SelectAsset(find(t, l, "v1.0.0"), "tool-[x64].zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Name != "tool-[x64].zip" {
+		t.Errorf("selected %q", a.Name)
+	}
+}

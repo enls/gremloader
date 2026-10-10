@@ -147,6 +147,14 @@ func (s *Source) SelectAsset(r Release, pattern string) (Asset, error) {
 		return Asset{Name: pattern, Size: -1, URL: s.assetURL(r.Repo, r.Tag, pattern)}, nil
 	}
 
+	// A name is its own match before it is a pattern: "tool-[x64].zip" is a file name here, and
+	// read as a glob it would select "tool-x.zip" instead.
+	for _, a := range r.Assets {
+		if a.Name == pattern {
+			return a, nil
+		}
+	}
+
 	var matches []Asset
 	for _, a := range r.Assets {
 		ok, err := path.Match(pattern, a.Name)
