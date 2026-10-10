@@ -83,6 +83,7 @@ type Request struct {
 	IfNoneMatch string
 	Origin      string // which root served it: "api", "web" or "cdn"
 	Query       string // raw query string (the CDN's signed parameters live here)
+	UserAgent   string
 }
 
 // Option configures a Server.
@@ -320,6 +321,7 @@ func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request
 		IfNoneMatch: r.Header.Get("If-None-Match"),
 		Origin:      origin,
 		Query:       r.URL.RawQuery,
+		UserAgent:   r.Header.Get("User-Agent"),
 	})
 	limited := s.rateLimited && origin == "api"
 	remaining, limit := -1, 0
