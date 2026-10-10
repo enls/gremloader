@@ -144,8 +144,11 @@ type Release struct {
 // Listing is the result of List.
 type Listing struct {
 	Releases []Release // drafts and unusable tags removed; source order, not sorted
-	// Latest is the tag GitHub itself calls the latest stable release ("" if unknown or not
-	// usable under the tag prefix).
+	// Latest is a hint, not the answer, and it differs by path. Web: the tag GitHub itself calls
+	// the latest stable release, "" if that tag is not usable under the tag prefix (in a monorepo
+	// it belongs to another package). API: the newest stable release under the prefix, because the
+	// list does not say which one GitHub calls latest and a package wants its own. The resolver
+	// must not depend on Latest being set.
 	Latest string
 	// Via is the path that produced the listing.
 	Via Mode
