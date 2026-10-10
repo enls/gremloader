@@ -1,0 +1,62 @@
+package redact
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestURL(t *testing.T) {
+	// The shape of a real release-asset redirect (values replaced).
+	signed := "https://release-assets.githubusercontent.com/github-production-release-asset/1398080271/ee0fe0fa-1f41?sp=r&sv=2018-11-09&sig=SECRETSIG&jwt=eyJSECRET&response-content-disposition=attachment%3B%20filename%3Dx.zip"
+	cases := map[string]string{
+		signed: "https://release-assets.githubusercontent.com/github-production-release-asset/1398080271/ee0fe0fa-1f41",
+		"https://github.com/o/r/releases/download/v1/a.zip":      "https://github.com/o/r/releases/download/v1/a.zip",
+		"https://user:pass@example.com/a?token=abc#frag":         "https://redacted@example.com/a",
+		"https://api.github.com/repos/o/r/releases?per_page=100": "https://api.github.com/repos/o/r/releases",
+		"not a url?secret=1": "not a url",
+		"relative/path#x":    "relative/path",
+		"":                   "",
+	}
+	for in, want := range cases {
+		got := URL(in)
+		if got != want {
+			t.Errorf("URL(%q) = %q, want %q", in, got, want)
+		}
+		for _, secret := range []string{"SECRET", "pass", "token=", "sig="} {
+			if strings.Contains(got, secret) {
+				t.Errorf("URL(%q) still contains %q: %q", in, secret, got)
+			}
+		}
+	}
+}
+
+func TestText(t *testing.T) {
+	in := `GET https://x.example/a?sig=SECRETSIG failed: Get "https://y.example/b?jwt=SECRETJWT": EOF (see http://z.example/c#SECRETFRAG)`
+	got := Text(in)
+	for _, secret := range []string{"SECRETSIG", "SECRETJWT", "SECRETFRAG"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("Text left %q in %q", secret, got)
+		}
+	}
+	if !strings.Contains(got, "https://x.example/a") || !strings.Contains(got, "failed:") {
+		t.Errorf("Text mangled the message: %q", got)
+	}
+}
+
+func TestToken(t *testing.T) {
+	if Token("") != "" || Token("ghp_abcdef") != "***" {
+		t.Error("Token")
+	}
+}
+
+func FuzzURL(f *testing.F) {
+	f.Add("https://a.example/b?c=d#e")
+	f.Add("%%%")
+	f.Add("ftp://u:p@h/x")
+	f.Fuzz(func(t *testing.T, s string) {
+		got := URL(s)
+		if strings.ContainsAny(got, "?#") {
+			t.Fatalf("URL(%q) = %q still has a raw ? or #", s, got)
+		}
+	})
+}
