@@ -106,6 +106,7 @@ type storedAsset struct {
 	id          int64
 	owner, repo string
 	tag         string
+	draft       bool // its release is a draft: never served, by name or by id
 	Asset
 }
 
@@ -230,7 +231,7 @@ func (s *Server) AddRelease(owner, repo string, r Release) {
 			s.tb.Fatalf("fakerelease: asset with no name in %s/%s %s", owner, repo, r.Tag)
 		}
 		s.nextID++
-		s.assets[s.nextID] = &storedAsset{id: s.nextID, owner: owner, repo: repo, tag: r.Tag, Asset: a}
+		s.assets[s.nextID] = &storedAsset{id: s.nextID, owner: owner, repo: repo, tag: r.Tag, draft: r.Draft, Asset: a}
 	}
 	s.releases = append(s.releases, stored)
 }
@@ -342,7 +343,11 @@ func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request
 		}
 		remaining = s.quotaRemaining
 	}
-	fault := s.takeFault(r.URL.Path)
+	// A request the limiter answers never reaches fault injection, so it does not use up a fault.
+	var fault *Fault
+	if !limited {
+		fault = s.takeFault(r.URL.Path)
+	}
 	s.mu.Unlock()
 
 	if origin == "api" && limit > 0 {
@@ -580,7 +585,7 @@ func (s *Server) apiAsset(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	a := s.assets[id]
 	s.mu.Unlock()
-	if a == nil || a.owner != r.PathValue("owner") || a.repo != r.PathValue("repo") {
+	if a == nil || a.draft || a.owner != r.PathValue("owner") || a.repo != r.PathValue("repo") {
 		notFound(w, r)
 		return
 	}
@@ -607,7 +612,7 @@ func (s *Server) cdnAsset(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	a := s.assets[id]
 	s.mu.Unlock()
-	if a == nil || a.Name != r.PathValue("name") || !strings.HasPrefix(r.URL.Query().Get("sig"), "FAKESIG") {
+	if a == nil || a.draft || a.Name != r.PathValue("name") || !strings.HasPrefix(r.URL.Query().Get("sig"), "FAKESIG") {
 		http.NotFound(w, r)
 		return
 	}
