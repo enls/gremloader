@@ -685,3 +685,32 @@ func TestNoUsableTagOnEitherPathIsNotFound(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
+
+// ErrNeedsAPI means "cannot be answered without the API, and the API is rate limited". A bad token
+// or an outage is a different failure and must not send the user off to set a token they have.
+func TestPrereleaseChannelAPIFailureIsNotReportedAsNeedingAToken(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+		e := newEnv(t, "tok")
+		e.srv.Inject(fakerelease.Fault{PathContains: "/api/", Status: status})
+		_, err := e.src.List(context.Background(), github.Query{Repo: "o/r", NeedAPIData: true})
+		if err == nil {
+			t.Fatalf("HTTP %d: no error", status)
+		}
+		if errors.Is(err, github.ErrNeedsAPI) || strings.Contains(err.Error(), "GITHUB_TOKEN") {
+			t.Errorf("HTTP %d: err = %v; this is not a missing-token problem", status, err)
+		}
+	}
+}
+
+func TestRateLimitedPrereleaseChannelWithATokenDoesNotAskForOne(t *testing.T) {
+	e := newEnv(t, "tok")
+	e.srv.SetRateLimited(true)
+	_, err := e.src.List(context.Background(), github.Query{Repo: "o/r", NeedAPIData: true})
+	var rl *download.RateLimitError
+	if !errors.Is(err, github.ErrNeedsAPI) || !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want ErrNeedsAPI wrapping the rate limit", err)
+	}
+	if strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Errorf("err = %v; a token is already configured", err)
+	}
+}

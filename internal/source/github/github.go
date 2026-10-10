@@ -204,8 +204,15 @@ func (s *Source) List(ctx context.Context, q Query) (*Listing, error) {
 	}
 
 	err := errors.Join(errs...)
-	if q.NeedAPIData && !errors.Is(err, ErrNotFound) {
-		err = fmt.Errorf("%w (the prerelease channel needs the API; set GITHUB_TOKEN to raise the limit): %w", ErrNeedsAPI, err)
+	// "Needs the API" is the answer only when the API was refused for quota. A bad token or an
+	// outage is a different failure and keeps its own error.
+	var rl *download.RateLimitError
+	if q.NeedAPIData && errors.As(err, &rl) {
+		hint := "the API quota is used up"
+		if !s.c.HasToken() {
+			hint = "the prerelease channel needs the API; set GITHUB_TOKEN to raise the limit"
+		}
+		err = fmt.Errorf("%w (%s): %w", ErrNeedsAPI, hint, err)
 	}
 	return nil, err
 }
