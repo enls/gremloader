@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+  exclusions:
+    rules:
+      # Tests build files and servers with throwaway permissions and paths.
+      - path: _test\.go
+        linters:
+          - gosec
+      # The fake server is test scaffolding: it redirects to its own base URL by design.
+      - path: internal/testutil/
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt

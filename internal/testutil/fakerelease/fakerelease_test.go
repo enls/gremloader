@@ -15,7 +15,13 @@ import (
 
 var t0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-func get(t *testing.T, url string, headers ...string) (*http.Response, []byte) {
+// response is the part of an HTTP response the tests look at; the body is read and closed by get.
+type response struct {
+	StatusCode int
+	Header     http.Header
+}
+
+func get(t *testing.T, url string, headers ...string) (response, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -30,12 +36,12 @@ func get(t *testing.T, url string, headers ...string) (*http.Response, []byte) {
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read %s: %v", url, err)
 	}
-	return resp, body
+	return response{StatusCode: resp.StatusCode, Header: resp.Header}, body
 }
 
 func decodeRelease(t *testing.T, b []byte) apiRelease {
@@ -205,7 +211,7 @@ func TestTruncatedDownloadIsAShortRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.ContentLength != int64(len(payload)) {
 		t.Errorf("Content-Length = %d, want %d (the full size must still be advertised)", resp.ContentLength, len(payload))
 	}
@@ -222,7 +228,7 @@ func TestTruncatedDownloadIsAShortRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	full, err := io.ReadAll(resp2.Body)
 	if err != nil || len(full) != len(payload) {
 		t.Errorf("retry: %d bytes, err %v", len(full), err)

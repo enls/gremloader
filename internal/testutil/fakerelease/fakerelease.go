@@ -475,7 +475,7 @@ func (s *Server) webTag(w http.ResponseWriter, r *http.Request) {
 	for _, rel := range s.visible(r.PathValue("owner"), r.PathValue("repo")) {
 		if rel.Tag == r.PathValue("tag") {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprintf(w, "<!doctype html><title>%s</title><h1>%s</h1>\n", rel.Name, rel.Name)
+			_, _ = fmt.Fprintf(w, "<!doctype html><title>%s</title><h1>%s</h1>\n", rel.Name, rel.Name)
 			return
 		}
 	}

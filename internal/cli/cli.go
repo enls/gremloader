@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,10 +25,16 @@ Commands:
 Run "gremloader <command> -h" for a command's flags.
 `
 
+// say writes to the terminal. A failed write to stdout or stderr has nowhere useful to be
+// reported, so it is deliberately dropped here, once, instead of at every call site.
+func say(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
+}
+
 // Run executes one command line (args excludes the program name) and returns the exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		say(stderr, "%s", usage)
 		return exitcode.Usage
 	}
 
@@ -35,10 +42,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "version", "--version":
 		return runVersion(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
+		say(stdout, "%s", usage)
 		return exitcode.OK
 	default:
-		fmt.Fprintf(stderr, "gremloader: unknown command %q\n\n%s", args[0], usage)
+		say(stderr, "gremloader: unknown command %q\n\n%s", args[0], usage)
 		return exitcode.Usage
 	}
 }
@@ -48,13 +55,13 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the build information as JSON")
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
+		if errors.Is(err, flag.ErrHelp) {
 			return exitcode.OK
 		}
 		return exitcode.Usage
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "gremloader version: unexpected argument %q\n", fs.Arg(0))
+		say(stderr, "gremloader version: unexpected argument %q\n", fs.Arg(0))
 		return exitcode.Usage
 	}
 
@@ -63,11 +70,11 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(info); err != nil {
-			fmt.Fprintf(stderr, "gremloader version: %v\n", err)
+			say(stderr, "gremloader version: %v\n", err)
 			return exitcode.Failed
 		}
 		return exitcode.OK
 	}
-	fmt.Fprintln(stdout, info)
+	say(stdout, "%s\n", info)
 	return exitcode.OK
 }
