@@ -99,7 +99,28 @@ func (l *Logger) open() error {
 		return fmt.Errorf("event log: %w", err)
 	}
 	l.f, l.size = f, st.Size()
+	if l.size > 0 && !endsWithNewline(l.path, l.size) {
+		// A crash (or a full disk) left a partial last line. Close it off so the next event starts
+		// on its own line instead of being glued to the fragment and lost with it.
+		n, _ := f.Write([]byte{'\n'})
+		l.size += int64(n)
+	}
 	return nil
+}
+
+// endsWithNewline reports whether the last byte of the file at path is a newline. Any doubt (it
+// cannot be read) counts as yes: a stray blank line is harmless, a failed open is not.
+func endsWithNewline(path string, size int64) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer func() { _ = f.Close() }()
+	var b [1]byte
+	if _, err := f.ReadAt(b[:], size-1); err != nil {
+		return true
+	}
+	return b[0] == '\n'
 }
 
 // Emit stamps (if the time is zero), redacts and appends one event.

@@ -214,3 +214,34 @@ func TestEmitAfterClose(t *testing.T) {
 		t.Errorf("second Close: %v", err)
 	}
 }
+
+// A crash can leave the last line without its newline. The next event must not be glued onto it:
+// that would turn two events into one unreadable line and lose the first event after every crash.
+func TestEmitAfterATornTailStartsANewLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	torn := `{"ts":"2026-10-11T15:00:00Z","level":"info","event":"first"}` + "\n" +
+		`{"ts":"2026-10-11T15:00:01Z","level":"info","ev`
+	if err := os.WriteFile(path, []byte(torn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, err := Open(path, WithClock(clock.NewFake(t0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Emit(Event{Event: "after"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = l.Close()
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, skipped, err := Scan(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 || evs[0].Event != "first" || evs[1].Event != "after" || skipped != 1 {
+		t.Errorf("events = %+v, skipped %d; want first and after, with the torn line skipped", evs, skipped)
+	}
+}
