@@ -1,0 +1,67 @@
+package download
+
+import (
+	"net/url"
+	"testing"
+)
+
+func TestGitHubPolicyHosts(t *testing.T) {
+	p := GitHubPolicy()
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://github.com/enls/gremloader/releases/download/v1/x.zip", true},
+		{"https://api.github.com/repos/o/r/releases", true},
+		{"https://release-assets.githubusercontent.com/x?sig=1", true},
+		{"https://objects.githubusercontent.com/x", true},
+		{"https://GITHUB.com/x", true},
+		{"https://githubusercontent.com/x", false}, // the wildcard is for subdomains only
+		{"https://evilgithubusercontent.com/x", false},
+		{"https://github.com.evil.example/x", false},
+		{"https://raw.githubusercontent.com.evil.example/x", false},
+		{"https://api.github.com.evil.example/x", false},
+		{"https://evil.example/github.com", false},
+		{"https://github.com./x", false},
+		{"http://github.com/x", false}, // plain http
+		{"ftp://github.com/x", false},
+		{"https://user:pass@github.com/x", false},
+		{"https:///x", false},
+	}
+	for _, c := range cases {
+		u, err := url.Parse(c.url)
+		if err != nil {
+			t.Fatalf("parse %q: %v", c.url, err)
+		}
+		if got := p.check(u) == nil; got != c.want {
+			t.Errorf("allowed(%q) = %v, want %v", c.url, got, c.want)
+		}
+	}
+}
+
+func TestGitHubPolicyTokenHosts(t *testing.T) {
+	p := GitHubPolicy()
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://api.github.com/repos/o/r/releases", true},
+		{"https://github.com/o/r/releases/download/v1/x", false},
+		{"https://release-assets.githubusercontent.com/x", false},
+		{"https://api.github.com:8443/x", false}, // another port of the same name is another service
+		{"http://api.github.com/x", false},
+	}
+	for _, c := range cases {
+		u, _ := url.Parse(c.url)
+		if got := p.tokenAllowed(u); got != c.want {
+			t.Errorf("tokenAllowed(%q) = %v, want %v", c.url, got, c.want)
+		}
+	}
+}
+
+func TestZeroPolicyAllowsNothing(t *testing.T) {
+	u, _ := url.Parse("https://github.com/x")
+	if (Policy{}).check(u) == nil {
+		t.Error("the zero Policy allowed a request")
+	}
+}

@@ -46,8 +46,10 @@ func ParseLoose(s string) (Version, error) {
 	return parse(s, t, true)
 }
 
-// FromTag turns a release tag into a version: it removes prefix (which may be empty) and then
-// parses loosely. The tag must also pass ValidTag.
+// FromTag turns a release tag into a version: it removes prefix and then parses loosely. The tag must
+// also pass ValidTag. A configured prefix is exact: it must be present, and what follows it is not
+// given a second "v" to strip ("app-v" removes the v itself; "app-" leaves "v1.2.3", which is an
+// error). With no prefix the loose form applies in full, so "v1.2.3" parses.
 func FromTag(tag, prefix string) (Version, error) {
 	if !ValidTag(tag) {
 		return Version{}, &ParseError{Input: tag, Reason: "not a valid tag name"}
@@ -55,7 +57,11 @@ func FromTag(tag, prefix string) (Version, error) {
 	if prefix != "" && !strings.HasPrefix(tag, prefix) {
 		return Version{}, &ParseError{Input: tag, Reason: fmt.Sprintf("does not start with the tag prefix %q", prefix)}
 	}
-	v, err := parse(tag, strings.TrimPrefix(tag, prefix), true)
+	rest := strings.TrimPrefix(tag, prefix)
+	if prefix == "" {
+		rest = strings.TrimPrefix(strings.TrimPrefix(rest, "v"), "V")
+	}
+	v, err := parse(tag, rest, true)
 	if err != nil {
 		return Version{}, err
 	}

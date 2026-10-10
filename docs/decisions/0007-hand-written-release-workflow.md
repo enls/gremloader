@@ -1,7 +1,7 @@
 # 0007. A hand-written release workflow, not GoReleaser
 
-Status: accepted, provisional (2026-10-10). Written by the assistant during Phase 0 because the plan
-left it open "to decide in Phase 0"; the project owner should confirm or overturn it.
+Status: accepted (written 2026-10-10 during Phase 0, when the plan left it open; confirmed by the
+project owner 2026-10-10).
 
 ## Context
 
