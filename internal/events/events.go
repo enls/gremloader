@@ -1,0 +1,190 @@
+// Package events writes the activity log: one JSON object per line (JSON Lines), so "what did
+// GremLoader do and when" is something you can grep, tail, load into jq or query from the CLI.
+//
+// Every message and URL is passed through internal/redact first, so signed download links and
+// tokens never reach the file. The file rotates by size (5 MiB, keeping 3 by default) so it
+// cannot grow without bound. Writing the log must never be the reason an install fails, so Emit
+// reports errors to the caller, who is expected to note and ignore them.
+package events
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/enls/gremloader/internal/clock"
+	"github.com/enls/gremloader/internal/redact"
+)
+
+// Levels.
+const (
+	Debug = "debug"
+	Info  = "info"
+	Warn  = "warn"
+	Error = "error"
+)
+
+// Event is one log line. Zero-valued fields are omitted.
+type Event struct {
+	Time       time.Time `json:"ts"`
+	Level      string    `json:"level"`
+	Event      string    `json:"event"`
+	Package    string    `json:"package,omitempty"`
+	Version    string    `json:"version,omitempty"`
+	From       string    `json:"from,omitempty"`
+	To         string    `json:"to,omitempty"`
+	Step       string    `json:"step,omitempty"`
+	Result     string    `json:"result,omitempty"`
+	URL        string    `json:"url,omitempty"`
+	Bytes      int64     `json:"bytes,omitempty"`
+	DurationMS int64     `json:"duration_ms,omitempty"`
+	Code       string    `json:"code,omitempty"`
+	Msg        string    `json:"msg,omitempty"`
+}
+
+// Option configures a Logger.
+type Option func(*Logger)
+
+// WithClock sets the time source (default: the system clock).
+func WithClock(c clock.Clock) Option { return func(l *Logger) { l.clock = c } }
+
+// WithMaxSize sets the rotation threshold in bytes (default 5 MiB).
+func WithMaxSize(n int64) Option { return func(l *Logger) { l.maxSize = n } }
+
+// WithKeep sets how many rotated files are kept (default 3).
+func WithKeep(n int) Option { return func(l *Logger) { l.keep = n } }
+
+// Logger appends events to a file. It is safe for concurrent use.
+type Logger struct {
+	mu      sync.Mutex
+	path    string
+	f       *os.File
+	size    int64
+	maxSize int64
+	keep    int
+	clock   clock.Clock
+}
+
+// Open creates the folder if needed and opens (or creates) the log for appending.
+func Open(path string, opts ...Option) (*Logger, error) {
+	l := &Logger{path: path, maxSize: 5 << 20, keep: 3, clock: clock.System{}}
+	for _, o := range opts {
+		o(l)
+	}
+	if l.keep < 1 {
+		l.keep = 1
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("event log folder: %w", err)
+	}
+	if err := l.open(); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+func (l *Logger) open() error {
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("event log: %w", err)
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return fmt.Errorf("event log: %w", err)
+	}
+	l.f, l.size = f, st.Size()
+	return nil
+}
+
+// Emit stamps (if the time is zero), redacts and appends one event.
+func (l *Logger) Emit(e Event) error {
+	if e.Time.IsZero() {
+		e.Time = l.clock.Now()
+	}
+	e.Time = e.Time.UTC()
+	if e.Level == "" {
+		e.Level = Info
+	}
+	e.Msg = redact.Text(e.Msg)
+	e.URL = redact.URL(e.URL)
+
+	line, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	line = append(line, '\n')
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.f == nil {
+		return fmt.Errorf("event log is closed")
+	}
+	if l.size > 0 && l.size+int64(len(line)) > l.maxSize {
+		l.rotate() // best effort: on failure we keep appending to the current file
+	}
+	n, err := l.f.Write(line)
+	l.size += int64(n)
+	return err
+}
+
+// rotate shifts path -> path.1 -> path.2 ... and drops the oldest. Called with l.mu held.
+func (l *Logger) rotate() {
+	if err := l.f.Close(); err != nil {
+		return
+	}
+	l.f = nil
+	// If anything below fails the log keeps working: we reopen whatever file is at l.path.
+	defer func() {
+		if l.f == nil {
+			if err := l.open(); err != nil {
+				l.f = nil
+			}
+		}
+	}()
+	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep))
+	for i := l.keep - 1; i >= 1; i-- {
+		_ = os.Rename(fmt.Sprintf("%s.%d", l.path, i), fmt.Sprintf("%s.%d", l.path, i+1))
+	}
+	if err := os.Rename(l.path, l.path+".1"); err != nil {
+		return
+	}
+	l.size = 0
+}
+
+// Close flushes and closes the file.
+func (l *Logger) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.f == nil {
+		return nil
+	}
+	err := l.f.Close()
+	l.f = nil
+	return err
+}
+
+// Scan reads events from r, skipping lines that are not valid events (a torn last line after a
+// crash, a hand edit). It returns the events and how many lines were skipped.
+func Scan(r io.Reader) (events []Event, skipped int, err error) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var e Event
+		if json.Unmarshal(line, &e) != nil || e.Event == "" {
+			skipped++
+			continue
+		}
+		events = append(events, e)
+	}
+	return events, skipped, sc.Err()
+}

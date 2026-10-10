@@ -13,5 +13,6 @@ one. Turned-down ideas are filed in [../decided-against.md](../decided-against.m
 | [0005](0005-per-backend-version-comparison.md) | Version comparison belongs to the backend |
 | [0006](0006-native-attestation-sigstore-go.md) | Verify attestations natively with sigstore-go |
 | [0007](0007-hand-written-release-workflow.md) | A hand-written release workflow, not GoReleaser (provisional) |
+| [0008](0008-package-version-rules.md) | Package version rules (`ver`) |
 
 Format: Context, Decision, Reasons, Consequences (and Rejected alternatives where there were any).
