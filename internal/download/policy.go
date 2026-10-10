@@ -75,7 +75,7 @@ func (p Policy) hostAllowed(host string) bool {
 
 // tokenAllowed reports whether the Authorization header may be sent to u.
 func (p Policy) tokenAllowed(u *url.URL) bool {
-	if u.Scheme != "https" && !(u.Scheme == "http" && p.AllowHTTP) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !p.AllowHTTP) {
 		return false
 	}
 	for _, h := range p.TokenHosts {

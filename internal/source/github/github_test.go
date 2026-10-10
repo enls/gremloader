@@ -274,7 +274,7 @@ func TestUnknownRepositoryIsNotFoundWithoutFallingOver(t *testing.T) {
 	}
 }
 
-func TestOnlyDraftsAndPrereleasesOnTheWebPath(t *testing.T) {
+func TestNoStableReleaseIsNotFound(t *testing.T) {
 	srv := fakerelease.New(t)
 	srv.AddRelease("o", "r", fakerelease.Release{Tag: "v0.1.0-rc.1", Prerelease: true})
 	c := newClient(t, "", srv.APIBase())

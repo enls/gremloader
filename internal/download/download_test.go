@@ -215,7 +215,7 @@ func assetAPIURL(t *testing.T, r *rig) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var rel struct{ Assets []struct{ URL string } }
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil || len(rel.Assets) != 1 {
 		t.Fatalf("decode release: %v (%d assets)", err, len(rel.Assets))

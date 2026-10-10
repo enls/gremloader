@@ -382,7 +382,7 @@ func (c *Client) once(ctx context.Context, u *url.URL, rq Request, handle func(*
 	if err != nil {
 		return c.networkError(ctx, &stalled, shown, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	code := resp.StatusCode
 	if (code >= 200 && code < 300) || (rq.NoFollow && code >= 300 && code < 400) {
