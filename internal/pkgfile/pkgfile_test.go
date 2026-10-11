@@ -2,6 +2,7 @@ package pkgfile
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -584,4 +585,27 @@ dir = "/d"
 	// Where a package installs is the package file's business, never the local override's.
 	_, err = load(t, base, "schema_version = 1\n[package.x]\nshared_dir = true\n", Options{})
 	wantProblem(t, err, 3, "gremloader.local.toml", "not allowed in the local override")
+}
+
+// Parse is Load without a file: the same bytes give the same configuration.
+func TestParseIsLoadWithoutAFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gremloader.toml")
+	if err := os.WriteFile(path, []byte(craftFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Vars: map[string]string{"root": `D:\Apps`}}
+	fromFile, err := Load(path, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromBytes, err := Parse(path, []byte(craftFile), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fromFile, fromBytes) {
+		t.Errorf("Load:\n%+v\nParse:\n%+v", fromFile, fromBytes)
+	}
+	if _, err := Parse("big.toml", make([]byte, MaxFileBytes+1), Options{}); err == nil || !strings.Contains(err.Error(), "big.toml") {
+		t.Errorf("an oversized file: %v", err)
+	}
 }

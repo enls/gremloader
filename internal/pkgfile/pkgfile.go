@@ -86,6 +86,15 @@ func Load(path string, opts Options) (*Config, error) {
 	return parse(path, data, localPath, local, opts)
 }
 
+// Parse reads a package file held in memory, such as the self-update package built into the binary
+// (ADR 0015). name stands for the file in messages. No local override file applies.
+func Parse(name string, data []byte, opts Options) (*Config, error) {
+	if len(data) > MaxFileBytes {
+		return nil, fmt.Errorf("%s: larger than %d KiB; this is not a package file", name, MaxFileBytes>>10)
+	}
+	return parse(name, data, "", nil, opts)
+}
+
 func readCapped(path string) ([]byte, error) {
 	f, err := os.Open(path) //nolint:gosec // G304: the package file the user named
 	if err != nil {
