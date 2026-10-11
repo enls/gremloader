@@ -134,7 +134,9 @@ forward. `post_update` runs with `GREMLOADER_ACTION=rollback`.
 
 **Remove** runs `pre_remove` (its failure stops the remove before anything is deleted), deletes the
 manifest's files and the folders GremLoader made once empty, then `post_remove`, and forgets the
-rollback record, manifests and rejections. An adopted package without a file list is refused
+rollback record, manifests and rejections. The install folder itself goes too once it is empty,
+even when it was there before GremLoader (adopted, or installed into), except a shared folder
+(decided with the user after the M6+M7 bug check: an emptied folder left behind is clutter). An adopted package without a file list is refused
 unless `--delete-dir`, which renames the folder aside and deletes it whole.
 
 **Adopt** records an existing folder without touching a file: `--version` is trusted;

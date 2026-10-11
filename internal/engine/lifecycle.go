@@ -263,6 +263,12 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 		it.To = it.From
 		e.runHook(ctx, it, pkg, pkgfile.PostRemove, string(ActRemove))
 	}
+	// A folder that was there before (adopted, or installed into) is never claimed, so the change
+	// leaves it; emptied, it goes too, after post_remove (which runs in it). os.Remove refuses one
+	// that is not empty, and a shared folder belongs to every package in it.
+	if !rec.SharedDir && isEmptyDir(rec.Dir) {
+		_ = os.Remove(rec.Dir)
+	}
 	return it, nil
 }
 
