@@ -443,7 +443,8 @@ func manifestOf(ar *archive.Result, dir string, oldDirs []string) *state.Manifes
 			m.Dirs = append(m.Dirs, d)
 			continue
 		}
-		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(d))); errors.Is(err, fs.ErrNotExist) {
+		// A file there is the old version's (a path that becomes a folder) and is cleared first.
+		if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(d))); errors.Is(err, fs.ErrNotExist) || err == nil && !fi.IsDir() {
 			m.Dirs = append(m.Dirs, d)
 		}
 	}
