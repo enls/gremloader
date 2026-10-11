@@ -97,3 +97,20 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
 - **Downloading each platform's asset in `gremloader lock` to hash it when neither the checksum
   file nor GitHub's digest states its hash.** Up to 150 MB per platform for a command that should
   be quick; `lock` refuses and says why. See ADR 0011.
+- **Letting the last package win when two install the same file in one folder.** Decided with the
+  user while planning M7 (2026-10-11): refused instead, before anything changes (ADR 0012). With
+  last-wins (what CraftWerk's `cp -a` into `~/.local` did), removing either package deletes the
+  other's file, and nothing would say so. The Craft tarballs keep their files under per-app names,
+  so the refusal costs them nothing.
+- **Rewriting `Exec=` in the shipped `.desktop` files to a full path** (what CraftWerk did on Linux).
+  Decided with the user (2026-10-11): the file is in the package's file list, so after the edit
+  `verify` would report it changed and every plan would carry a drift note, for all twelve apps.
+  The Craft file's hook warns instead when `~/.local/bin` is not on `PATH`; most desktops add it
+  at login once the folder exists.
+- **A package key listing files a hook may change** (left out of verify and drift notes), to keep
+  the `.desktop` rewrite. Considered in the same decision: new engine surface and another rule for
+  a case the PATH warning covers. Revisit if a real package needs its hook to edit its own files.
+- **Shipping the Craft Linux hook as a separate script** (`examples/craft/craft-linux-hook.sh`).
+  Decided with the user (2026-10-11): an inline `sh -c` in the package file, so there is nothing
+  extra to place on each machine. Its cost: no braces in the script (hook arguments are
+  templates; `{{`/`}}` would escape them) and at most 1024 bytes.

@@ -12,3 +12,24 @@ change is listed under **Breaking**.
 - Project foundation: licences (MIT or Apache-2.0), CI quality gates, release pipeline, test
   harness (fake release server, injectable clock, captured fixtures).
 - `gremloader version` (and `version -json`).
+- The package file `gremloader.toml` (presets, per-platform assets and folders, variables, hooks),
+  the machine-local override `gremloader.local.toml` (pin, hold, channel, cool-down, enabled) and
+  the lock file `gremloader.lock` (exact release, URL, hash and size per platform).
+- Installing from GitHub releases: the release page and its feed first, GitHub's API only when
+  needed (a token is used for the API only); channels, cool-down, pins and holds.
+- Verification before unpacking: the release's checksum file (GNU, BSD and sidecar forms), GitHub's
+  asset digest, the lock's hash. A mismatch is a hard failure (exit 5); the download is kept for
+  inspection, and `--accept-sha256` lets one exact hash through.
+- A strict archive extractor (zip, tar, tar.gz) that refuses unsafe names, links, devices and
+  archive bombs, and unpacks nothing until the whole archive has been checked.
+- Journaled changes: an install, update, rollback or remove that fails or is interrupted leaves
+  the old version or the new one, never a mix; `repair` finishes or undoes an interrupted one.
+  The user's own files in an install folder are never touched.
+- Commands: `check`, `plan`, `apply`, `install`, `update`, `remove`, `rollback`, `verify`, `adopt`,
+  `repair`, `pin`, `unpin`, `hold`, `unhold`, `lock`, `explain`, `log`, with `--json` and stable
+  exit codes. A running program blocks only its own package's change.
+- Hooks after install, update and remove (and before remove), run without a shell, with a timeout
+  that stops everything they started.
+- `shared_dir` for install folders several packages share, such as `~/.local`; two packages may
+  never install the same file into one folder.
+- `examples/craft/`: a package file for the twelve Craft apps, replacing CraftWerk.
