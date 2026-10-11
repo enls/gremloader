@@ -361,6 +361,26 @@ func TestSharedDirRunningCheckCoversOldAndRollbackFiles(t *testing.T) {
 	}
 }
 
+// The running check of a shared folder also reads the rollback version's manifest; when that one is
+// missing, the error names it, not the installed version's.
+func TestSharedDirNamesTheMissingRollbackManifest(t *testing.T) {
+	r := bothInstalled(t)
+	if it := item(t, r.apply(r.engine(), Request{Packages: []string{"app"}}), "app"); it.Result != ResultUpdated {
+		t.Fatalf("update = %+v (%v)", it, it.Err)
+	}
+	rec := r.state().Packages["app"]
+	if rec.Previous == nil || rec.Previous.Manifest == "" {
+		t.Fatalf("no rollback manifest recorded: %+v", rec)
+	}
+	if err := os.Remove(state.Path(r.paths.State, rec.Previous.Manifest)); err != nil {
+		t.Fatal(err)
+	}
+	rb := r.engine().Rollback(context.Background(), "app")
+	if rb.Err == nil || !strings.Contains(rb.Err.Error(), "rollback version's manifest") {
+		t.Fatalf("rollback = %+v (%v)", rb, rb.Err)
+	}
+}
+
 // The ownership check is about one folder: packages in folders of their own may ship the same
 // paths.
 func TestOwnershipIsPerFolder(t *testing.T) {

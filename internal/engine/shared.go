@@ -52,13 +52,16 @@ func skipRunning(it *Item, procs []proc.Process) {
 // to: what a change to it may touch.
 func (e *Engine) ownFiles(rec *state.Package) ([]string, error) {
 	var out []string
-	for _, rel := range []string{rec.Manifest, previousManifest(rec)} {
+	for i, rel := range []string{rec.Manifest, previousManifest(rec)} {
 		if rel == "" {
 			continue
 		}
 		m, err := state.LoadManifest(state.Path(e.cfg.Paths.State, rel))
 		if err != nil {
-			return nil, err
+			if i == 1 {
+				return nil, fmt.Errorf("the rollback version's manifest: %w", err)
+			}
+			return nil, fmt.Errorf("the installed version's manifest: %w", err)
 		}
 		for _, f := range m.Files {
 			out = append(out, f.Path)

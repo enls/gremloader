@@ -42,7 +42,7 @@ func (e *Engine) preflight(it *Item) *state.Package {
 	if rec.SharedDir {
 		var err error
 		if own, err = e.ownFiles(rec); err != nil {
-			it.fail(fmt.Errorf("the installed version's manifest: %w", err))
+			it.fail(err)
 			return nil
 		}
 	}
