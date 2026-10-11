@@ -21,8 +21,9 @@ var (
 
 // retryShared runs op, retrying a few times when Windows reports that another program has the file
 // open (an antivirus scanner, Explorer's preview, a search indexer) (P3-13). Five tries over
-// about three seconds; anything else fails at once.
-func retryShared(op func() error) error {
+// about three seconds; anything else fails at once, and so does a target with the Windows
+// read-only attribute (retrying cannot help), with a message saying how to clear it.
+func retryShared(target string, op func() error) error {
 	delay := 200 * time.Millisecond
 	var err error
 	for attempt := range 5 {
@@ -33,14 +34,19 @@ func retryShared(op func() error) error {
 		if err = op(); err == nil || !isSharingViolation(err) {
 			return err
 		}
+		if ro := readOnly(target, err); ro != nil {
+			return ro
+		}
 	}
 	return err
 }
 
-func rename(from, to string) error { return retryShared(func() error { return osRename(from, to) }) }
+func rename(from, to string) error {
+	return retryShared(to, func() error { return osRename(from, to) })
+}
 
 func remove(path string) error {
-	err := retryShared(func() error { return os.Remove(path) })
+	err := retryShared(path, func() error { return os.Remove(path) })
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
