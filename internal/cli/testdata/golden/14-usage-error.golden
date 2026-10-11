@@ -1,0 +1,6 @@
+$ gremloader update --version 3.0.0 --yes
+exit 4
+--- stdout
+--- stderr
+gremloader update: --version needs exactly one package
+Run "gremloader update -h" for help.

@@ -1,0 +1,5 @@
+$ gremloader list
+exit 1
+--- stdout
+--- stderr
+gremloader list: <HOME>/config/gremloader.toml:6:1: package.app.colour: unknown key

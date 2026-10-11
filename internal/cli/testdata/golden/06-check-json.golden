@@ -1,0 +1,19 @@
+$ gremloader check --json
+exit 2
+--- stdout
+{
+  "schema_version": 1,
+  "command": "check",
+  "exit_code": 2,
+  "items": [
+    {
+      "package": "app",
+      "action": "update",
+      "result": "pending",
+      "from": "1.0.0",
+      "to": "2.0.0",
+      "dir": "<ROOT>/App"
+    }
+  ]
+}
+--- stderr

@@ -1,0 +1,5 @@
+$ gremloader check
+exit 3
+--- stdout
+--- stderr
+gremloader check: another GremLoader run is in progress (PID 4242, gremloader test, since <TIME>); try again when it has finished (lock file: <HOME>/state/run.lock)

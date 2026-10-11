@@ -1,0 +1,5 @@
+$ gremloader check
+exit 2
+--- stdout
+app  1.0.0 -> 2.0.0  update
+--- stderr
