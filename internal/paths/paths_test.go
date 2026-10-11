@@ -226,3 +226,16 @@ func TestSystemDoesNotFailOnAMissingHomeThatResolveDoesNotNeed(t *testing.T) {
 		t.Errorf("Resolve without a home: %v, want an error naming GREMLOADER_HOME", err)
 	}
 }
+
+func TestIsWindowsDeviceName(t *testing.T) {
+	for _, s := range []string{"con", "NUL", "nul.txt", "Com1.log", "LPT9", "aux.tar.gz", "nul "} {
+		if !IsWindowsDeviceName(s) {
+			t.Errorf("IsWindowsDeviceName(%q) = false", s)
+		}
+	}
+	for _, s := range []string{"console", "nulls", "com10", "x.nul", "", "manifests"} {
+		if IsWindowsDeviceName(s) {
+			t.Errorf("IsWindowsDeviceName(%q) = true", s)
+		}
+	}
+}

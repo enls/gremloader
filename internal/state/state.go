@@ -205,7 +205,7 @@ func validRel(rel string) bool {
 		return false
 	}
 	for c := range strings.SplitSeq(rel, "/") {
-		if c == "" || c == "." || c == ".." {
+		if c == "" || c == "." || c == ".." || paths.IsWindowsDeviceName(c) {
 			return false
 		}
 	}
