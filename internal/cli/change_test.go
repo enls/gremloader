@@ -107,10 +107,9 @@ func TestYesIsNotASafetyFlag(t *testing.T) {
 		r.publish("1.0.0", 10, archives.F("app.exe", "1"))
 		r.publish("2.0.0", 5, archives.F("app.exe", "2"))
 		r.run("install", "app", "--yes")
-		// The engine reports a refused downgrade as "skipped", exit 0 (open question in the handoff:
-		// a script asking for a version it does not get may want exit 1).
+		// A version asked for and refused is a failure: a script must not read it as success.
 		code, out, _ := r.run("update", "app", "--version", "1.0.0", "--yes")
-		if r.appExe() != "2" || code != exitcode.OK || !strings.Contains(out, "skipped") || !strings.Contains(out, "--allow-downgrade") {
+		if r.appExe() != "2" || code != exitcode.Failed || !strings.Contains(out, "failed") || !strings.Contains(out, "--allow-downgrade") {
 			t.Fatalf("without --allow-downgrade: exit %d, app %q\n%s", code, r.appExe(), out)
 		}
 		if code, out, _ := r.run("update", "app", "--version", "1.0.0", "--yes", "--allow-downgrade"); code != exitcode.OK || r.appExe() != "1" {
