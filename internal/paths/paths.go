@@ -180,3 +180,19 @@ func FindPackageFile(explicit string, e Env, cwd string, p Paths) (string, error
 	}
 	return "", fmt.Errorf("no package file found; looked for:\n  %s\nuse --file or create one", strings.Join(candidates, "\n  "))
 }
+
+// ValidRel accepts a "/"-separated relative path that stays where it is put: no "..", no
+// absolute path, no drive letter, no backslash, no Windows device name. Paths stored in GremLoader's
+// own files (manifests, journals, state) must pass it on every OS, since a file written on one
+// system is trusted when read back.
+func ValidRel(rel string) bool {
+	if rel == "" || strings.ContainsAny(rel, `\:`) || strings.HasPrefix(rel, "/") {
+		return false
+	}
+	for c := range strings.SplitSeq(rel, "/") {
+		if c == "" || c == "." || c == ".." || IsWindowsDeviceName(c) {
+			return false
+		}
+	}
+	return filepath.IsLocal(filepath.FromSlash(rel))
+}
