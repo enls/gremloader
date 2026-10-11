@@ -82,6 +82,28 @@ func TestVerify(t *testing.T) {
 	}
 }
 
+// verify --remote keeps the run's exit codes for the download itself (plan E.4): one that does not
+// match is 5, GitHub out of reach is 7.
+func TestVerifyRemoteExitCodes(t *testing.T) {
+	r := newRig(t, appFile)
+	r.publish("1.0.0", 10, archives.F("app.exe", "1"))
+	r.run("install", "app", "--yes")
+	d := r.deps()
+	d.apiBase, d.webBase = "http://127.0.0.1:1", "http://127.0.0.1:1" // nothing listens on port 1
+	var out, errb strings.Builder
+	if code := runWith([]string{"verify", "--remote", "--root", r.root}, IO{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errb}, d); code != exitcode.Offline {
+		t.Errorf("offline: exit %d, want 7\n%s%s", code, out.String(), errb.String())
+	}
+
+	received := r.publishBadSums("3.0.0")
+	if code, out, errOut := r.run("install", "app@3.0.0", "--yes", "--accept-sha256", received); code != exitcode.OK {
+		t.Fatalf("install 3.0.0: exit %d\n%s%s", code, out, errOut)
+	}
+	if code, out, errOut := r.run("verify", "--remote"); code != exitcode.VerifyFailed {
+		t.Errorf("a download that does not match: exit %d, want 5\n%s%s", code, out, errOut)
+	}
+}
+
 func TestAdopt(t *testing.T) {
 	for _, line := range [][]string{{"adopt", "app", "--version", "1.0.0"}, {"install", "app@1.0.0", "--adopt"}} {
 		t.Run(line[0], func(t *testing.T) {

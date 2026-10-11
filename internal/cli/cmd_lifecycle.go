@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -101,21 +102,24 @@ func defineVerify(fs *flag.FlagSet) func(*call, []string) int {
 				}
 			}
 			checks := s.e.Verify(c.ctx(), args, *remote)
-			code := exitcode.OK
 			var rows []checkRow
+			var items []*engine.Item
 			for _, ch := range checks {
 				r := checkRow{Package: ch.Package, Version: ch.Version, Dir: ch.Dir, OK: ch.OK(), Files: ch.Files, Missing: ch.Missing,
 					Modified: ch.Modified, NoManifest: ch.NoManifest, Quarantine: ch.Quarantine}
+				// Files that differ from what was installed are a failed check (exit 1); a download
+				// that does not match (--remote) is 5 and GitHub out of reach 7, as for any run
+				// (plan E.4).
+				it := &engine.Item{Package: ch.Package, Result: engine.ResultUnchanged}
 				if ch.Err != nil {
 					r.Error = ch.Err.Error()
+					it.Result, it.Err = engine.ResultFailed, ch.Err
+				} else if !r.OK {
+					it.Result, it.Err = engine.ResultFailed, errors.New("files differ")
 				}
-				// Files that differ from what was installed are a failed check (exit 1); exit 5 is
-				// kept for downloads that do not match (plan E.4).
-				if !r.OK {
-					code = exitcode.Failed
-				}
-				rows = append(rows, r)
+				rows, items = append(rows, r), append(items, it)
 			}
+			code := (&engine.Plan{Items: items}).ExitCode(false)
 			if c.g.json {
 				c.writeJSON(jsonOut{Command: c.name, ExitCode: code, Items: rows})
 				return code
