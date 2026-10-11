@@ -69,7 +69,7 @@ func (e *Engine) lockOne(ctx context.Context, name, want string) (*Item, *lock.P
 		return it, nil
 	}
 	q := e.query(name, pkg)
-	q.NeedAPIData = false
+	q.NeedAPIData = true
 	listing, err := e.cfg.Source.List(ctx, q)
 	if err != nil {
 		it.fail(err)
