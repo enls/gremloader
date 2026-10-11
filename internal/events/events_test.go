@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -292,6 +294,56 @@ func TestShortenCutsOnACharacterBoundary(t *testing.T) {
 	}
 	if shorten("short", 51) != "short" {
 		t.Error("a short string was changed")
+	}
+}
+
+// A rotation whose last step fails must not eat the history it shifted on the way. Another reader
+// holding the live file (a viewer, a second gremloader) makes that rename fail on Windows, and
+// every later Emit used to run the shifts again and push the rotated files off the end.
+func TestFailedRotationKeepsTheRotatedHistory(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("needs a rename that fails while another handle is open, which only Windows does")
+	}
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	for i := 1; i <= 3; i++ {
+		if err := os.WriteFile(path+"."+strconv.Itoa(i), []byte("OLD"+strconv.Itoa(i)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l, err := Open(path, WithMaxSize(300), WithKeep(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = l.Close() }()
+
+	hold, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 12; i++ {
+		if err := l.Emit(Event{Event: "tick", Msg: strings.Repeat("x", 40)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		b, err := os.ReadFile(path + "." + strconv.Itoa(i))
+		if want := "OLD" + strconv.Itoa(i) + "\n"; err != nil || string(b) != want {
+			t.Errorf("%s.%d = %q, %v; want %q (a failed rotation lost it)", filepath.Base(path), i, b, err, want)
+		}
+	}
+
+	// Once the other reader lets go, the next Emit rotates once and the history advances by one.
+	_ = hold.Close()
+	if err := l.Emit(Event{Event: "tick", Msg: strings.Repeat("x", 40)}); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range map[int]string{2: "OLD1\n", 3: "OLD2\n"} {
+		if b, err := os.ReadFile(path + "." + strconv.Itoa(i)); err != nil || string(b) != want {
+			t.Errorf(".%d after a good rotation = %q, %v; want %q", i, b, err, want)
+		}
+	}
+	if _, err := os.Stat(path + ".rotating"); err == nil {
+		t.Error("the aside file was left behind")
 	}
 }
 

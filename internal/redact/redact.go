@@ -20,6 +20,11 @@ func URL(raw string) string {
 	if err != nil || u.Scheme == "" {
 		return cutAt(dropUserinfo(raw), "?#") // userinfo first: a password may hold a raw ? or #
 	}
+	if strings.Contains(u.Opaque, "@") {
+		// "user:pass@host/x" parses with the user name as the scheme, and "https:user:pass@host"
+		// has no slashes: no userinfo is recognised, so whatever precedes the last @ is dropped.
+		return cutAt("redacted"+raw[strings.LastIndexByte(raw, '@'):], "?#")
+	}
 	u.RawQuery = ""
 	u.ForceQuery = false
 	u.Fragment = ""
@@ -45,20 +50,25 @@ func Token(s string) string {
 	return "***"
 }
 
-// dropUserinfo replaces the user:password part of a "scheme://user:pw@host" string that url.Parse
-// would not accept (a bad escape, an unterminated IPv6 host), where nothing else could remove it.
+// dropUserinfo replaces the user:pw part of a "scheme://user:pw@host" or "//user:pw@host" string
+// that url.Parse would not accept or would not read as having a scheme (a bad escape, an
+// unterminated IPv6 host, a raw "/" in the password), where nothing else could remove it. It
+// looks for the last @ in the whole remainder, not only before the first "/": a password may
+// contain one, and on a string that is already malformed, losing a host that is followed by an @
+// in its path is the safer mistake than keeping a credential.
 func dropUserinfo(s string) string {
-	i := strings.Index(s, "://")
-	if i < 0 {
+	var prefix string
+	switch i := strings.Index(s, "://"); {
+	case i >= 0:
+		prefix = s[:i+3]
+	case strings.HasPrefix(s, "//"):
+		prefix = "//"
+	default:
 		return s
 	}
-	rest := s[i+3:]
-	authority := rest
-	if end := strings.IndexByte(rest, '/'); end >= 0 {
-		authority = rest[:end]
-	}
-	if at := strings.LastIndexByte(authority, '@'); at >= 0 {
-		return s[:i+3] + "redacted" + rest[at:]
+	rest := s[len(prefix):]
+	if at := strings.LastIndexByte(rest, '@'); at >= 0 {
+		return prefix + "redacted" + rest[at:]
 	}
 	return s
 }

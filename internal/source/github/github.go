@@ -206,6 +206,18 @@ func (s *Source) List(ctx context.Context, q Query) (*Listing, error) {
 		}
 	}
 
+	// A gap in the feed says "not in the feed", not "not found". Once the other path was tried and
+	// failed for a reason of its own, nothing has said the release is absent, so the gap is kept
+	// as text only: it no longer satisfies ErrNotFound (and no longer opens the message with it).
+	// If that other path did report ErrNotFound, its own error still carries it.
+	if len(errs) > 1 {
+		for i, e := range errs {
+			var pv *partialViewError
+			if errors.As(e, &pv) {
+				errs[i] = errors.New(pv.msg)
+			}
+		}
+	}
 	err := errors.Join(errs...)
 	// "Needs the API" is the answer only when the API was refused for quota. A bad token or an
 	// outage is a different failure and keeps its own error.

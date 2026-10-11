@@ -686,6 +686,27 @@ func TestNoUsableTagOnEitherPathIsNotFound(t *testing.T) {
 	}
 }
 
+// The feed showing no usable tag only means "not in the feed". If the API, which could say, was
+// refused for quota, the answer is unknown, and calling it "not found" would send the user to
+// fix their package file instead of their rate limit.
+func TestFeedGapWithARateLimitedAPIIsNotReportedAsNotFound(t *testing.T) {
+	e := newEnv(t, "")
+	e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+	for i := 1; i <= 12; i++ {
+		e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: fmt.Sprintf("lib-v1.%d.0", i), PublishedAt: t0.AddDate(0, 0, i)})
+	}
+	e.srv.SetRateLimited(true)
+
+	_, err := e.src.List(context.Background(), github.Query{Repo: "o/mono", TagPrefix: "app-v"})
+	var rl *download.RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v; want the rate limit to be reachable", err)
+	}
+	if errors.Is(err, github.ErrNotFound) {
+		t.Errorf("err = %v; a rate-limited lookup is not \"not found\"", err)
+	}
+}
+
 // ErrNeedsAPI means "cannot be answered without the API, and the API is rate limited". A bad token
 // or an outage is a different failure and must not send the user off to set a token they have.
 func TestPrereleaseChannelAPIFailureIsNotReportedAsNeedingAToken(t *testing.T) {

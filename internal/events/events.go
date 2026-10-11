@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -197,13 +198,42 @@ func (l *Logger) rotate() {
 			_ = l.open()
 		}
 	}()
-	_ = os.Remove(fmt.Sprintf("%s.%d", l.path, l.keep))
+	// All or nothing. The live file is the one most likely to be held by another process (a viewer,
+	// a second run), and on Windows that makes its rename fail. Shifting the older files first and
+	// renaming the live one last used to drop the oldest file on every failed attempt, so a few
+	// failures erased the whole history. Each step is recorded and undone, in reverse, if a later
+	// one fails.
+	var done [][2]string
+	move := func(from, to string) bool {
+		err := os.Rename(from, to)
+		if err == nil {
+			done = append(done, [2]string{from, to})
+		}
+		return err == nil || errors.Is(err, fs.ErrNotExist)
+	}
+	undo := func() {
+		for i := len(done) - 1; i >= 0; i-- {
+			_ = os.Rename(done[i][1], done[i][0])
+		}
+	}
+	rotated := func(i int) string { return fmt.Sprintf("%s.%d", l.path, i) }
+	aside, dropped := l.path+".rotating", rotated(l.keep)+".dropped"
+
+	if !move(l.path, aside) {
+		return // nothing has been touched
+	}
+	steps := []func() bool{func() bool { return move(rotated(l.keep), dropped) }}
 	for i := l.keep - 1; i >= 1; i-- {
-		_ = os.Rename(fmt.Sprintf("%s.%d", l.path, i), fmt.Sprintf("%s.%d", l.path, i+1))
+		steps = append(steps, func() bool { return move(rotated(i), rotated(i+1)) })
 	}
-	if err := os.Rename(l.path, l.path+".1"); err != nil {
-		return
+	steps = append(steps, func() bool { return move(aside, rotated(1)) })
+	for _, step := range steps {
+		if !step() {
+			undo()
+			return
+		}
 	}
+	_ = os.Remove(dropped)
 	l.size = 0
 }
 
