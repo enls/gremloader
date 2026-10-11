@@ -102,6 +102,7 @@ func init() {
 		{name: "lock", args: "[package...]", summary: "Write gremloader.lock: the exact release of each package for each platform", define: defineLock},
 		{name: "explain", args: "<package>", summary: "Show a package's effective settings and where each comes from", define: defineExplain},
 		{name: "log", summary: "Show the event log", define: defineLog},
+		{name: "self-update", summary: "Update GremLoader itself to its newest release (built by its own workflow, attested)", define: defineSelfUpdate},
 		{name: "version", summary: "Print the version and build information", define: defineVersion},
 		{name: "help", args: "[command]", summary: "Show this help, or a command's", define: defineHelp},
 	}
@@ -120,7 +121,7 @@ func usage() string {
 	var b strings.Builder
 	b.WriteString("GremLoader: install, update and log software packages.\n\nUsage:\n  gremloader <command> [arguments] [flags]\n\nCommands:\n")
 	for _, c := range commands {
-		fmt.Fprintf(&b, "  %-10s %s\n", c.name, c.summary)
+		fmt.Fprintf(&b, "  %-11s %s\n", c.name, c.summary)
 	}
 	b.WriteString("\nFlags may go anywhere on the line. Global flags:\n")
 	fs := flag.NewFlagSet("", flag.ContinueOnError)

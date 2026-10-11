@@ -54,6 +54,11 @@ type rig struct {
 	hooks    *recordHooks      // nil: hooks really run
 	// exeVersions is what version_from_exe reads, by the executable's full path.
 	exeVersions map[string]string
+	// Self-update: the "running" binary (never the test binary), its version, and the attestation
+	// checker (nil: the real one over the fake GitHub).
+	selfExe     string
+	selfVersion string
+	attest      engine.Attester
 }
 
 // recordHooks records the hooks a run asks for instead of running them.
@@ -133,6 +138,13 @@ func (r *rig) deps() deps {
 			return "", errors.New("no version resource")
 		},
 	}
+	d.selfExe = func() (string, error) {
+		if r.selfExe == "" {
+			return "", errors.New("this test sets no running binary")
+		}
+		return r.selfExe, nil
+	}
+	d.selfVersion, d.attest = r.selfVersion, r.attest
 	if r.hooks != nil {
 		d.hooks = r.hooks
 	}
