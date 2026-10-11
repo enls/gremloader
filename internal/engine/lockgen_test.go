@@ -183,10 +183,13 @@ func TestLockRefusesWhatItCannotTrust(t *testing.T) {
 // The lock is shared: the installed version does not matter, an explicit one does.
 func TestLockIgnoresWhatIsInstalledAndHonoursWant(t *testing.T) {
 	r := atV1(t)
-	if entries, it := lockOf(t, r.engine(), LockOptions{}); it.Result != ResultLocked || entries["app"].Version != "2.0.0" {
+	// appFile has one asset template for every platform: it is locked for this machine's.
+	entries, it := lockOf(t, r.engine(), LockOptions{})
+	if it.Result != ResultLocked || entries["app"].Version != "2.0.0" || len(entries["app"].Platforms) != 1 ||
+		entries["app"].Platforms[platform.Current().String()] == nil {
 		t.Errorf("lock = %+v, %+v (%v)", entries["app"], it, it.Err)
 	}
-	entries, it := lockOf(t, r.engine(), LockOptions{Want: map[string]string{"app": "1.0.0"}})
+	entries, it = lockOf(t, r.engine(), LockOptions{Want: map[string]string{"app": "1.0.0"}})
 	if it.Result != ResultLocked || entries["app"].Version != "1.0.0" {
 		t.Errorf("lock of 1.0.0 = %+v, %+v (%v)", entries["app"], it, it.Err)
 	}
