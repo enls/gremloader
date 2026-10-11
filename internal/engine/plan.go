@@ -177,6 +177,9 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 	}
 	it.Action, it.Result, it.Reason = d.Action, d.Result, d.Reason
 	if d.Action == ActNone {
+		if in.Installed == "" && it.Result == ResultSkipped {
+			e.noteAdoptable(it)
+		}
 		return it
 	}
 	it.Release, it.To = *d.Release, d.Release.Version.String()
@@ -336,6 +339,20 @@ func checkInstallDir(it *Item) error {
 			"but kept only until the next update or remove of %s", it.Dir, it.Package)
 	}
 	return nil
+}
+
+// noteAdoptable points at adopt when a package that is not installed already has files in its
+// folder (an install from before GremLoader, a CraftWerk folder): `check` says so, as `plan` does.
+func (e *Engine) noteAdoptable(it *Item) {
+	ents, err := os.ReadDir(it.Dir)
+	if err != nil || len(ents) == 0 {
+		return
+	}
+	if it.Shared {
+		it.notef("%s already holds files; `gremloader adopt %s --verify` records the ones that match a release", it.Dir, it.Package)
+		return
+	}
+	it.notef("%s already holds files; `gremloader adopt %s` records what is there", it.Dir, it.Package)
 }
 
 // noteDrift compares the install with its manifest by presence and size (P3-9). Hashing every file
