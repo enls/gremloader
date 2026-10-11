@@ -45,8 +45,10 @@ Not there yet: attestation checks (next), updating GremLoader itself, the schedu
 sources (apt, winget, Docker Compose) and the web UI.
 
 What was tested: everything has automated tests, including CraftWerk's behaviours ported as a
-scenario suite, and CI runs them on Windows and Linux. All of them run against a fake GitHub; a
-run against the real one, on a copy of a real CraftWerk install, comes before the first release.
+scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real
+one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps
+adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and
+reinstall. Not yet on Linux.
 
 ## Building
 
