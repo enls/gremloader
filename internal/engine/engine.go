@@ -11,6 +11,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"time"
 
 	"github.com/enls/gremloader/internal/clock"
@@ -248,8 +250,12 @@ func isOffline(err error) bool {
 		errors.Is(err, context.Canceled):
 		return false
 	}
-	var ne interface{ Timeout() bool }
-	return errors.As(err, &ne) || errors.Is(err, download.ErrStalled)
+	// Not "anything with a Timeout method": fs.PathError and syscall.Errno have one too, and a
+	// full disk is not a network outage.
+	var ue *url.Error
+	var oe *net.OpError
+	var de *net.DNSError
+	return errors.As(err, &ue) || errors.As(err, &oe) || errors.As(err, &de) || errors.Is(err, download.ErrStalled)
 }
 
 // fail marks an item failed with err.
