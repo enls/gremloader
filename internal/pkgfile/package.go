@@ -166,6 +166,14 @@ func (p *Package) Dir(goos, home string) (string, error) {
 	return filepath.Clean(s), nil
 }
 
+// SharedDir reports whether the install directory on goos is shared with other packages and the
+// user (shared_dir, e.g. ~/.local): it need not be empty for a first install, its top-level
+// folders are never GremLoader's, and it is never deleted whole.
+func (p *Package) SharedDir(goos string) bool {
+	v, ok := p.keyed[kSharedDir].get(goos)
+	return ok && v.v.(bool)
+}
+
 // VersionFromExe is the file, relative to the install directory, whose embedded version
 // describes an existing install (Windows adoption). ok is false when none is set for goos.
 func (p *Package) VersionFromExe(goos string) (rel string, ok bool, err error) {
@@ -266,6 +274,11 @@ func (p *Package) Explain() []Setting {
 	add(kVerifyRequire, list(p.VerifyRequire))
 	add(kVerifyAttest, q(p.Attestation))
 	p.explainKeyed(&out, kDir)
+	if p.keyed[kSharedDir] == nil {
+		add(kSharedDir, "false")
+	} else {
+		p.explainKeyed(&out, kSharedDir)
+	}
 	if p.Strip.Auto {
 		add(kStrip, q("auto"))
 	} else {

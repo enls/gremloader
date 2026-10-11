@@ -123,6 +123,7 @@ type rawLayer struct {
 	Checksums       *string    `toml:"checksums"`
 	Verify          *rawVerify `toml:"verify"`
 	Dir             any        `toml:"dir"`
+	SharedDir       any        `toml:"shared_dir"`
 	Strip           any        `toml:"strip"`
 	VersionFromExe  any        `toml:"version_from_exe"`
 	Platforms       *[]string  `toml:"platforms"`
@@ -487,6 +488,7 @@ const (
 	kVerifyRequire   = "verify.require"
 	kVerifyAttest    = "verify.attestation"
 	kDir             = "dir"
+	kSharedDir       = "shared_dir"
 	kStrip           = "strip"
 	kExe             = "version_from_exe"
 	kPlatforms       = "platforms"
@@ -581,6 +583,9 @@ func (s *src) layer(r *rawLayer, key []string, where string, kind layerKind) *la
 	}
 	if r.Dir != nil {
 		l.keyed[kDir] = s.keyedTemplates(r.Dir, at("dir"), where, forDir, keyOS)
+	}
+	if r.SharedDir != nil {
+		l.keyed[kSharedDir] = s.keyedBools(r.SharedDir, at("shared_dir"), where)
 	}
 	if r.Strip != nil {
 		if st, err := parseStrip(r.Strip); err != nil {
@@ -741,6 +746,31 @@ func (s *src) keyedTemplates(v any, key []string, where string, allowed map[stri
 			what = "an OS table"
 		}
 		s.problem(key, "must be a string or %s", what)
+	}
+	return k
+}
+
+// keyedBools reads true or false, or a table of those keyed by OS.
+func (s *src) keyedBools(v any, key []string, where string) *keyed {
+	k := &keyed{byKey: map[string]value{}}
+	switch v := v.(type) {
+	case bool:
+		k.all = &value{v: v, origin: s.origin(key, where)}
+	case map[string]any:
+		for _, name := range slices.Sorted(maps.Keys(v)) {
+			sub := append(append([]string{}, key...), name)
+			if !s.checkKey(name, keyOS, sub) {
+				continue
+			}
+			b, ok := v[name].(bool)
+			if !ok {
+				s.problem(sub, "must be true or false")
+				continue
+			}
+			k.byKey[name] = value{v: b, origin: s.origin(sub, where)}
+		}
+	default:
+		s.problem(key, "must be true or false, or an OS table of those")
 	}
 	return k
 }

@@ -12,6 +12,7 @@ app (from <HOME>/config/gremloader.toml)
   verify.require        = ["checksum"]         # default
   verify.attestation    = "if-present"         # default
   dir                   = "{root}/App"         # gremloader.toml:7 [package.app]
+  shared_dir            = false                # default
   strip                 = "auto"               # default
   platforms             = []                   # default
   pin                   = ""                   # default

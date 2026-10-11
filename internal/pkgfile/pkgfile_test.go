@@ -486,3 +486,76 @@ func TestHomeExpansion(t *testing.T) {
 		t.Errorf("dir \"~ian/Apps\" = %q, want an error", d)
 	}
 }
+
+// shared_dir (decision 2 of the M5 bug check): a folder several packages install into, such as
+// ~/.local. A bool, or an OS table of bools, merged per OS like dir.
+func TestSharedDir(t *testing.T) {
+	c := mustLoad(t, `schema_version = 1
+[preset.p]
+checksums = "s"
+asset = "x.zip"
+dir = { windows = 'C:\Apps\{name}', linux = "~/.local" }
+shared_dir = { linux = true }
+
+[package.a]
+use = "p"
+repo = "o/a"
+
+[package.b]
+use = "p"
+repo = "o/b"
+shared_dir.windows = true
+
+[package.c]
+use = "p"
+repo = "o/c"
+shared_dir = false
+
+[package.d]
+repo = "o/d"
+asset = "d.zip"
+checksums = "s"
+dir = "/d"
+`, "")
+	for _, x := range []struct {
+		pkg, goos string
+		want      bool
+	}{
+		{"a", "linux", true}, {"a", "windows", false},
+		{"b", "linux", true}, {"b", "windows", true}, // one OS overridden, the other kept
+		{"c", "linux", false}, {"c", "windows", false}, // a plain value covers every OS
+		{"d", "linux", false}, // default
+	} {
+		if got := c.Packages[x.pkg].SharedDir(x.goos); got != x.want {
+			t.Errorf("%s SharedDir(%s) = %v, want %v", x.pkg, x.goos, got, x.want)
+		}
+	}
+
+	got := map[string]Setting{}
+	for _, s := range c.Packages["b"].Explain() {
+		got[s.Key] = s
+	}
+	if s := got[`shared_dir."linux"`]; s.Value != "true" || s.Origin.String() != "gremloader.toml:6 [preset.p]" {
+		t.Errorf("explain shared_dir.linux = %+v", s)
+	}
+	if s := got[`shared_dir."windows"`]; s.Value != "true" || s.Origin.String() != "gremloader.toml:15 [package.b]" {
+		t.Errorf("explain shared_dir.windows = %+v", s)
+	}
+	for _, s := range c.Packages["d"].Explain() {
+		if s.Key == "shared_dir" && (s.Value != "false" || s.Origin.String() != "default") {
+			t.Errorf("explain d shared_dir = %+v, want false from default", s)
+		}
+	}
+
+	base := "schema_version = 1\n[package.x]\nrepo = \"o/x\"\nasset = \"x.zip\"\ndir = \"/x\"\nchecksums = \"s\"\n"
+	_, err := load(t, base+"shared_dir = \"yes\"\n", "", Options{})
+	wantProblem(t, err, 7, "shared_dir", "true or false")
+	_, err = load(t, base+"shared_dir = { linx = true }\n", "", Options{})
+	wantProblem(t, err, 7, "linx", "not an operating system")
+	_, err = load(t, base+"shared_dir = { linux = 1 }\n", "", Options{})
+	wantProblem(t, err, 7, "shared_dir.linux", "true or false")
+
+	// Where a package installs is the package file's business, never the local override's.
+	_, err = load(t, base, "schema_version = 1\n[package.x]\nshared_dir = true\n", Options{})
+	wantProblem(t, err, 3, "gremloader.local.toml", "not allowed in the local override")
+}
