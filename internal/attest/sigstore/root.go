@@ -1,4 +1,4 @@
-package attest
+package sigstore
 
 import (
 	"context"
@@ -13,14 +13,12 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/tuf"
 	"github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
+
+	"github.com/enls/gremloader/internal/attest"
 )
 
 // TUFHost is public-good Sigstore's TUF repository, the only host the trust-root fetch may reach.
 const TUFHost = "tuf-repo-cdn.sigstore.dev"
-
-// ErrUnreachable: the trust root, the attestation list or a bundle could not be fetched. The engine
-// treats it as "could not check", which is never "attested".
-var ErrUnreachable = errors.New("attestation check unreachable")
 
 // tufTimeout bounds each TUF request; the TUF client has no context of its own.
 const tufTimeout = 30 * time.Second
@@ -39,7 +37,7 @@ func TrustedRoot(ctx context.Context, dir string, hc *http.Client) (root.Trusted
 			return tr, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: Sigstore's trust root: %w", ErrUnreachable, err)
+	return nil, fmt.Errorf("%w: Sigstore's trust root: %w", attest.ErrUnreachable, err)
 }
 
 func tufOptions(ctx context.Context, dir string, hc *http.Client, forceCache bool) *tuf.Options {

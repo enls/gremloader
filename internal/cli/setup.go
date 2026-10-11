@@ -11,6 +11,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 
 	"github.com/enls/gremloader/internal/attest"
+	"github.com/enls/gremloader/internal/attest/sigstore"
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/engine"
@@ -221,7 +222,7 @@ func (c *call) platform() platform.Platform {
 // attester checks attestations for the engine (ADR 0014): the list through the API client, each
 // bundle through its own client under the bundle policy and with no token, the trust root fetched
 // (once, and only when a bundle needs it) into the cache folder.
-func (c *call) attester(w *world, src *github.Source, policy download.Policy) *attest.Checker {
+func (c *call) attester(w *world, src *github.Source, policy download.Policy) *sigstore.Checker {
 	bp := download.BundlePolicy()
 	switch {
 	case c.d.bundlePolicy != nil:
@@ -233,12 +234,12 @@ func (c *call) attester(w *world, src *github.Source, policy download.Policy) *a
 	trust := c.d.trustRoot
 	if trust == nil {
 		trust = func(ctx context.Context) (root.TrustedMaterial, error) {
-			return attest.TrustedRoot(ctx, filepath.Join(w.paths.Cache, "tuf"), nil)
+			return sigstore.TrustedRoot(ctx, filepath.Join(w.paths.Cache, "tuf"), nil)
 		}
 	}
-	return &attest.Checker{
+	return &sigstore.Checker{
 		List: func(ctx context.Context, repo, sum string) ([]attest.Raw, error) {
-			bs, err := src.Attestations(ctx, repo, sum, bundles, attest.MaxBundle)
+			bs, err := src.Attestations(ctx, repo, sum, bundles, sigstore.MaxBundle)
 			raws := make([]attest.Raw, 0, len(bs))
 			for _, b := range bs {
 				raws = append(raws, attest.Raw{Data: b.Data, Snappy: b.Snappy})

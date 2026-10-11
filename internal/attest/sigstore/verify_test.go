@@ -1,4 +1,4 @@
-package attest
+package sigstore
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/sigstore/sigstore-go/pkg/root"
 
+	"github.com/enls/gremloader/internal/attest"
 	"github.com/enls/gremloader/internal/testutil/fixtures"
 )
 
@@ -47,7 +48,7 @@ func provenance(t *testing.T) []byte {
 }
 func release(t *testing.T) []byte { return bundleFixture(t, "gh_2.102.0_checksums.txt.bundle.sn") }
 
-func check(t *testing.T, bundles [][]byte, digest string, p Policy) Result {
+func check(t *testing.T, bundles [][]byte, digest string, p attest.Policy) attest.Result {
 	t.Helper()
 	r, err := verifier(t).Check(bundles, digest, p)
 	if err != nil {
@@ -58,8 +59,8 @@ func check(t *testing.T, bundles [][]byte, digest string, p Policy) Result {
 
 func TestProvenancePasses(t *testing.T) {
 	for _, repo := range []string{"cli/cli", "CLI/Cli"} {
-		r := check(t, [][]byte{provenance(t)}, zipSHA256, Policy{Repo: repo})
-		if r.Outcome != Passed || r.Workflow != ghWorkflow {
+		r := check(t, [][]byte{provenance(t)}, zipSHA256, attest.Policy{Repo: repo})
+		if r.Outcome != attest.Passed || r.Workflow != ghWorkflow {
 			t.Errorf("%s: %+v", repo, r)
 		}
 	}
@@ -68,19 +69,19 @@ func TestProvenancePasses(t *testing.T) {
 // What GitHub's API returns for the zip: the release attestation first, then the provenance. The
 // release attestation is skipped, whichever order they come in.
 func TestReleaseAttestationIsSkipped(t *testing.T) {
-	r := check(t, [][]byte{release(t)}, checksumsSHA256, Policy{Repo: "cli/cli"})
-	if r.Outcome != None || len(r.Skipped) != 1 || !strings.Contains(r.Skipped[0], "release") || len(r.Failures) != 0 {
+	r := check(t, [][]byte{release(t)}, checksumsSHA256, attest.Policy{Repo: "cli/cli"})
+	if r.Outcome != attest.None || len(r.Skipped) != 1 || !strings.Contains(r.Skipped[0], "release") || len(r.Failures) != 0 {
 		t.Errorf("release attestation alone: %+v", r)
 	}
 	for _, order := range [][][]byte{{release(t), provenance(t)}, {provenance(t), release(t)}} {
-		if r := check(t, order, zipSHA256, Policy{Repo: "cli/cli"}); r.Outcome != Passed || len(r.Skipped) != 1 {
+		if r := check(t, order, zipSHA256, attest.Policy{Repo: "cli/cli"}); r.Outcome != attest.Passed || len(r.Skipped) != 1 {
 			t.Errorf("both: %+v", r)
 		}
 	}
 }
 
 func TestNoBundlesIsNone(t *testing.T) {
-	if r := check(t, nil, zipSHA256, Policy{Repo: "cli/cli"}); r.Outcome != None || r.Workflow != "" {
+	if r := check(t, nil, zipSHA256, attest.Policy{Repo: "cli/cli"}); r.Outcome != attest.None || r.Workflow != "" {
 		t.Errorf("%+v", r)
 	}
 }
@@ -89,19 +90,19 @@ func TestFails(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		digest string
-		p      Policy
+		p      attest.Policy
 		want   string
 	}{
-		{"another file's digest", checksumsSHA256, Policy{Repo: "cli/cli"}, "digest"},
-		{"another repository", zipSHA256, Policy{Repo: "cli/other"}, "SAN"},
-		{"another owner", zipSHA256, Policy{Repo: "other/cli"}, "SAN"},
-		{"another workflow", zipSHA256, Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/release.yml"}, "SAN"},
-		{"a prefix of the workflow", zipSHA256, Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/deploy.yml"}, "SAN"},
-		{"another ref", zipSHA256, Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/deployment.yml@refs/heads/main"}, "SAN"},
+		{"another file's digest", checksumsSHA256, attest.Policy{Repo: "cli/cli"}, "digest"},
+		{"another repository", zipSHA256, attest.Policy{Repo: "cli/other"}, "SAN"},
+		{"another owner", zipSHA256, attest.Policy{Repo: "other/cli"}, "SAN"},
+		{"another workflow", zipSHA256, attest.Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/release.yml"}, "SAN"},
+		{"a prefix of the workflow", zipSHA256, attest.Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/deploy.yml"}, "SAN"},
+		{"another ref", zipSHA256, attest.Policy{Repo: "cli/cli", SignerWorkflow: ".github/workflows/deployment.yml@refs/heads/main"}, "SAN"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := check(t, [][]byte{provenance(t)}, tc.digest, tc.p)
-			if r.Outcome != Failed || len(r.Failures) != 1 || !strings.Contains(r.Failures[0], tc.want) {
+			if r.Outcome != attest.Failed || len(r.Failures) != 1 || !strings.Contains(r.Failures[0], tc.want) {
 				t.Errorf("%+v", r)
 			}
 		})
@@ -110,7 +111,7 @@ func TestFails(t *testing.T) {
 
 func TestSignerWorkflowPasses(t *testing.T) {
 	for _, wf := range []string{".github/workflows/deployment.yml", ".github/workflows/deployment.yml@refs/heads/trunk"} {
-		if r := check(t, [][]byte{provenance(t)}, zipSHA256, Policy{Repo: "cli/cli", SignerWorkflow: wf}); r.Outcome != Passed {
+		if r := check(t, [][]byte{provenance(t)}, zipSHA256, attest.Policy{Repo: "cli/cli", SignerWorkflow: wf}); r.Outcome != attest.Passed {
 			t.Errorf("%s: %+v", wf, r)
 		}
 	}
@@ -133,26 +134,26 @@ func TestTamperedSignatureFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := check(t, [][]byte{tampered}, zipSHA256, Policy{Repo: "cli/cli"})
-	if r.Outcome != Failed {
+	r := check(t, [][]byte{tampered}, zipSHA256, attest.Policy{Repo: "cli/cli"})
+	if r.Outcome != attest.Failed {
 		t.Errorf("%+v", r)
 	}
 	// A failing bundle does not hide a passing one.
-	if r := check(t, [][]byte{tampered, provenance(t)}, zipSHA256, Policy{Repo: "cli/cli"}); r.Outcome != Passed || len(r.Failures) != 1 {
+	if r := check(t, [][]byte{tampered, provenance(t)}, zipSHA256, attest.Policy{Repo: "cli/cli"}); r.Outcome != attest.Passed || len(r.Failures) != 1 {
 		t.Errorf("tampered + good: %+v", r)
 	}
 }
 
 func TestUnreadableIsSkipped(t *testing.T) {
-	r := check(t, [][]byte{[]byte("{"), []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}`)}, zipSHA256, Policy{Repo: "cli/cli"})
-	if r.Outcome != None || len(r.Skipped) != 2 {
+	r := check(t, [][]byte{[]byte("{"), []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}`)}, zipSHA256, attest.Policy{Repo: "cli/cli"})
+	if r.Outcome != attest.None || len(r.Skipped) != 2 {
 		t.Errorf("%+v", r)
 	}
 }
 
 func TestBadPolicyOrDigest(t *testing.T) {
 	v := verifier(t)
-	for _, p := range []Policy{{Repo: "cli"}, {Repo: "cli/cli/x"}, {Repo: "../cli"}, {Repo: "cli/.."}, {Repo: ""},
+	for _, p := range []attest.Policy{{Repo: "cli"}, {Repo: "cli/cli/x"}, {Repo: "../cli"}, {Repo: "cli/.."}, {Repo: ""},
 		{Repo: "cli/cli", SignerWorkflow: "deployment.yml"}, {Repo: "cli/cli", SignerWorkflow: ".github/workflows/a/b.yml"},
 		{Repo: "cli/cli", SignerWorkflow: ".github/workflows/../x.yml"}, {Repo: "cli/cli", SignerWorkflow: ".github/workflows/x.txt"}} {
 		if _, err := v.Check(nil, zipSHA256, p); err == nil {
@@ -160,7 +161,7 @@ func TestBadPolicyOrDigest(t *testing.T) {
 		}
 	}
 	for _, d := range []string{"", "xyz", zipSHA256[:62], zipSHA256 + "00"} {
-		if _, err := v.Check(nil, d, Policy{Repo: "cli/cli"}); err == nil {
+		if _, err := v.Check(nil, d, attest.Policy{Repo: "cli/cli"}); err == nil {
 			t.Errorf("digest %q: no error", d)
 		}
 	}

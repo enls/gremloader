@@ -17,6 +17,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 
 	"github.com/enls/gremloader/internal/attest"
+	"github.com/enls/gremloader/internal/attest/sigstore"
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
@@ -55,7 +56,7 @@ type rig struct {
 	free       func(string) (uint64, error) // nil: plenty
 	wrap       func(Fetcher) Fetcher        // nil: the real download client
 	exeVersion func(string) (string, error) // nil: none
-	attest     Attester                     // nil: a real attest.Checker over the fake (none published unless added)
+	attest     Attester                     // nil: a real sigstore.Checker over the fake (none published unless added)
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -127,9 +128,9 @@ func (r *rig) engineAt(apiBase, webBase string) *Engine {
 	src := github.New(client, github.Options{APIBase: apiBase, WebBase: webBase})
 	att := r.attest
 	if att == nil {
-		att = &attest.Checker{
+		att = &sigstore.Checker{
 			List: func(ctx context.Context, repo, sum string) ([]attest.Raw, error) {
-				bs, err := src.Attestations(ctx, repo, sum, client, attest.MaxBundle)
+				bs, err := src.Attestations(ctx, repo, sum, client, sigstore.MaxBundle)
 				var raws []attest.Raw
 				for _, b := range bs {
 					raws = append(raws, attest.Raw{Data: b.Data, Snappy: b.Snappy})

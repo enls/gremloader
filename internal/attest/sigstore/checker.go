@@ -1,4 +1,4 @@
-package attest
+package sigstore
 
 import (
 	"context"
@@ -8,20 +8,16 @@ import (
 	"sync"
 
 	"github.com/sigstore/sigstore-go/pkg/root"
-)
 
-// Raw is a bundle as it was fetched: JSON, or snappy's block format from a bundle_url.
-type Raw struct {
-	Data   []byte
-	Snappy bool
-}
+	"github.com/enls/gremloader/internal/attest"
+)
 
 // Checker lists an asset's bundles and checks them. The trust root is fetched the first time a
 // bundle needs checking, so a package that publishes none costs one API request and nothing more.
 type Checker struct {
 	// List returns the bundles published for the asset of repo whose SHA-256 is sha256hex; none
 	// is (nil, nil).
-	List func(ctx context.Context, repo, sha256hex string) ([]Raw, error)
+	List func(ctx context.Context, repo, sha256hex string) ([]attest.Raw, error)
 	// Root returns the trusted root (TrustedRoot, or a fixture in tests).
 	Root func(ctx context.Context) (root.TrustedMaterial, error)
 
@@ -29,22 +25,22 @@ type Checker struct {
 	v  *Verifier
 }
 
-// Check lists and checks the bundles for the asset. An error wrapping ErrUnreachable means the
+// Check lists and checks the bundles for the asset. An error wrapping attest.ErrUnreachable means the
 // bundles or the trust root could not be fetched; any other error is a policy or digest that
 // cannot be used.
-func (c *Checker) Check(ctx context.Context, repo, sha256hex string, p Policy) (Result, error) {
+func (c *Checker) Check(ctx context.Context, repo, sha256hex string, p attest.Policy) (attest.Result, error) {
 	if p.Repo != repo {
-		return Result{}, fmt.Errorf("policy for %q used for %q", p.Repo, repo)
+		return attest.Result{}, fmt.Errorf("policy for %q used for %q", p.Repo, repo)
 	}
 	if err := p.Validate(); err != nil {
-		return Result{}, err
+		return attest.Result{}, err
 	}
 	raws, err := c.List(ctx, repo, sha256hex)
 	if err != nil {
-		return Result{}, fmt.Errorf("%w: the attestations of %s: %w", ErrUnreachable, repo, err)
+		return attest.Result{}, fmt.Errorf("%w: the attestations of %s: %w", attest.ErrUnreachable, repo, err)
 	}
 	if len(raws) == 0 {
-		return Result{}, nil
+		return attest.Result{}, nil
 	}
 	bundles := make([][]byte, len(raws))
 	decodeErr := map[int]error{}
@@ -58,11 +54,11 @@ func (c *Checker) Check(ctx context.Context, repo, sha256hex string, p Policy) (
 	}
 	v, err := c.verifier(ctx)
 	if err != nil {
-		return Result{}, err
+		return attest.Result{}, err
 	}
 	res, err := v.Check(bundles, sha256hex, p)
 	if err != nil {
-		return Result{}, err
+		return attest.Result{}, err
 	}
 	for i, err := range decodeErr {
 		prefix := fmt.Sprintf("bundle %d: ", i+1)
@@ -83,8 +79,8 @@ func (c *Checker) verifier(ctx context.Context) (*Verifier, error) {
 	}
 	tm, err := c.Root(ctx)
 	if err != nil {
-		if !errors.Is(err, ErrUnreachable) {
-			err = fmt.Errorf("%w: %w", ErrUnreachable, err)
+		if !errors.Is(err, attest.ErrUnreachable) {
+			err = fmt.Errorf("%w: %w", attest.ErrUnreachable, err)
 		}
 		return nil, err
 	}

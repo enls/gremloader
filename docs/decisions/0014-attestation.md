@@ -8,7 +8,12 @@ ADR 0006 chose to verify GitHub artifact attestations in-process with sigstore-g
 it in M8 (E.5), with the regression rule P3-10 and the levels of E.3.4. A checksum file and
 GitHub's `digest` protect against corruption and transit tampering, not against someone who can
 publish a release: they control both files. A build-provenance attestation ties an asset to the
-workflow run that built it. Package: `internal/attest`, the only importer of sigstore-go.
+workflow run that built it. Packages: `internal/attest` (the types the engine uses: policy,
+result, "unreachable") and `internal/attest/sigstore`, the only importer of sigstore-go, which
+only the command line imports. The engine, and everything that imports it, stays free of that
+graph: when the engine imported it directly, every test binary that links the engine doubled in
+size, and the hook tests, which start copies of their own binary, missed their 1.5 s window on
+Windows (first start of a new executable).
 
 What GitHub actually serves (checked 2026-10-11 against `cli/cli` v2.102.0):
 `GET /repos/{owner}/{repo}/attestations/sha256:{digest}` works without a token (core quota,

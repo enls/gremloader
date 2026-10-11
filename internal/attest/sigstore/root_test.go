@@ -1,4 +1,4 @@
-package attest
+package sigstore
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/enls/gremloader/internal/attest"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -23,7 +25,7 @@ func TestTrustedRootOffline(t *testing.T) {
 		return nil, errors.New("offline")
 	})}
 	for _, dir := range []string{filepath.Join(t.TempDir(), "missing"), t.TempDir()} {
-		if _, err := TrustedRoot(context.Background(), dir, hc); !errors.Is(err, ErrUnreachable) {
+		if _, err := TrustedRoot(context.Background(), dir, hc); !errors.Is(err, attest.ErrUnreachable) {
 			t.Errorf("%s: %v", dir, err)
 		}
 	}
@@ -83,7 +85,7 @@ func TestTrustedRootLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r, err := v.Check([][]byte{provenance(t)}, zipSHA256, Policy{Repo: "cli/cli"}); err != nil || r.Outcome != Passed {
+	if r, err := v.Check([][]byte{provenance(t)}, zipSHA256, attest.Policy{Repo: "cli/cli"}); err != nil || r.Outcome != attest.Passed {
 		t.Fatalf("%+v %v", r, err)
 	}
 	// A second fetch inside the day is served from the cache, with no network at all.
