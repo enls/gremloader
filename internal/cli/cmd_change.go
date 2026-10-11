@@ -195,6 +195,10 @@ func (c *call) confirm(items []*engine.Item) (bool, int) {
 	if !c.d.stdinTTY() {
 		return false, c.failf(exitcode.Usage, "nothing was changed: there is no terminal to confirm on; run again with --yes to apply this plan")
 	}
+	if c.g.json {
+		// stdout is the JSON object's; the plan being confirmed still has to be seen.
+		printItems(c.io.Stderr, items, c.g.quiet)
+	}
 	say(c.io.Stderr, "Apply these changes? [y/N] ")
 	line, _ := bufio.NewReader(c.io.Stdin).ReadString('\n')
 	if ans := strings.ToLower(strings.TrimSpace(line)); ans == "y" || ans == "yes" {

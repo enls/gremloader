@@ -89,4 +89,12 @@ func TestJSONStdoutIsOnlyJSON(t *testing.T) {
 	if code != exitcode.OK || !bytes.HasPrefix(bytes.TrimSpace([]byte(out)), []byte("{")) || strings.Count(out, `"schema_version"`) != 1 {
 		t.Errorf("exit %d, stdout:\n%s", code, out)
 	}
+
+	// The plan being confirmed is shown, on stderr: nobody answers y to a plan they never saw.
+	r.publish("2.0.0", 5, archives.F("app.exe", "2"))
+	r.stdin = "n\n"
+	code, _, errOut := r.run("update", "--json")
+	if code != exitcode.OK || !strings.Contains(errOut, "1.0.0 -> 2.0.0") || !strings.Contains(errOut, "[y/N]") {
+		t.Errorf("exit %d, stderr:\n%s", code, errOut)
+	}
 }
