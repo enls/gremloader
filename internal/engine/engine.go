@@ -19,6 +19,7 @@ import (
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/exitcode"
+	"github.com/enls/gremloader/internal/lock"
 	"github.com/enls/gremloader/internal/paths"
 	"github.com/enls/gremloader/internal/peversion"
 	"github.com/enls/gremloader/internal/pkgfile"
@@ -177,6 +178,9 @@ type Item struct {
 	LockSize  int64
 	Overlay   bool // installing into a non-empty folder that GremLoader does not manage (--overlay)
 	CreateDir bool // the install folder's parent is missing and may be created (--create-dir)
+	// Override is set when --accept-sha256 let a download through: what gremloader.lock should
+	// record for this platform if it names the package at this version (lock.File.Override).
+	Override *lock.Asset
 }
 
 // Plan is what a run will do.

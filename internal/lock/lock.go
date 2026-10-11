@@ -49,7 +49,14 @@ type Asset struct {
 	URL    string `json:"url"`
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
+	// VerifiedBy is "hash-override" when SHA256 was accepted with --accept-sha256 although it
+	// differed from the release's own checksum (plan E.3.4), so a reviewer of the lock sees it.
+	// Empty otherwise.
+	VerifiedBy string `json:"verified_by,omitempty"`
 }
+
+// HashOverride is the only value of Asset.VerifiedBy.
+const HashOverride = "hash-override"
 
 // ErrNotLocked: the lock has no entry for that package or platform.
 var ErrNotLocked = errors.New("not in the lock file")
@@ -101,6 +108,19 @@ func (f *File) Get(pkg string, p platform.Platform) (*Package, *Asset, error) {
 		return nil, nil, fmt.Errorf("package %s on %s: %w (locked for: %s)", pkg, p, ErrNotLocked, strings.Join(lp.platformNames(), ", "))
 	}
 	return lp, a, nil
+}
+
+// Override records a hash accepted with --accept-sha256 for pkg at version on p, marked as such.
+// It changes nothing, and returns false, unless the lock already names that package at that version
+// for that platform: an override never adds a package to a lock or changes its version.
+func (f *File) Override(pkg, version string, p platform.Platform, a Asset) bool {
+	lp := f.Packages[pkg]
+	if lp == nil || lp.Version != version || lp.Platforms[p.String()] == nil {
+		return false
+	}
+	a.VerifiedBy = HashOverride
+	lp.Platforms[p.String()] = &a
+	return true
 }
 
 func (p *Package) platformNames() []string {
@@ -167,6 +187,9 @@ func (a *Asset) validate() error {
 	}
 	if a.Size <= 0 {
 		errs = append(errs, fmt.Errorf("size %d is not positive", a.Size))
+	}
+	if a.VerifiedBy != "" && a.VerifiedBy != HashOverride {
+		errs = append(errs, fmt.Errorf("verified_by %q is not %q", a.VerifiedBy, HashOverride))
 	}
 	// Which hosts may be contacted is the download policy's decision, made again at install time;
 	// here only the shape is checked. http is allowed so tests can lock against a local server.

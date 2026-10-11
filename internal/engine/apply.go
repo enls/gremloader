@@ -18,6 +18,7 @@ import (
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/journal"
+	"github.com/enls/gremloader/internal/lock"
 	"github.com/enls/gremloader/internal/pkgfile"
 	"github.com/enls/gremloader/internal/state"
 	"github.com/enls/gremloader/internal/ver"
@@ -131,6 +132,9 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 	got, verifiedBy, ar, tree := st.got, st.levels, st.ar, st.tree
+	if slices.Contains(verifiedBy, lock.HashOverride) {
+		it.Override = &lock.Asset{Asset: it.Asset.Name, URL: it.Asset.URL, SHA256: got.SHA256, Size: got.Size}
+	}
 	if msg, ok := e.noteLongPath(it, fileList(ar), ar.Dirs); ok {
 		e.emit(events.Event{Level: events.Warn, Event: "apply.step", Package: it.Package, Step: "long-path", Msg: msg})
 	}

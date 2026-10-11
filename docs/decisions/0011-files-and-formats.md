@@ -73,7 +73,13 @@ loads with a warning.
 seconds, so the same content gives the same bytes. Each asset URL must be the stable release
 download URL: a query, fragment or credentials are refused, so a signed, expiring CDN link can
 never be committed. Which hosts may be contacted is decided again at install time by the download
-policy, not by the lock.
+policy, not by the lock. An asset entry may carry `"verified_by": "hash-override"` (added in M6,
+decided with the user 2026-10-11; no release had shipped, so no schema bump): its hash was
+accepted with `--accept-sha256` although the release's checksum file said otherwise, and a
+reviewer of the lock should see that. An override is written only into a lock that already names
+the package at that version; it never adds a package or changes a version. `gremloader lock`
+reads releases through the GitHub API (every platform's asset list and size is only there) and
+takes each hash from the checksum file and GitHub's digest, which must agree.
 
 **State**: a missing `state.json` is an empty state; a damaged one is an error, never an empty
 state (that would make every install folder look like someone else's). A record with
