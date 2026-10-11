@@ -25,7 +25,8 @@ report. `plan`, `apply`, `install` and `update` share it; `remove`, `rollback` a
 
 **Confirmation** (Q10). `--yes` confirms. Without it the plan is printed and a terminal must answer
 `y` or `yes` (anything else changes nothing, exit 0). No terminal and no `--yes`: nothing changes,
-exit 4. `--yes` is never a safety flag: an overlay (`--overlay`), a downgrade
+exit 4. Git Bash's mintty is not a console (its stdin is a pipe), so there every change needs
+`--yes`; this fails safe and is left as is. `--yes` is never a safety flag: an overlay (`--overlay`), a downgrade
 (`--allow-downgrade`) and a hash override (`--accept-sha256`) each need their own flag. Commands
 that change no file (`adopt`, `repair` without `--forget`, `pin`, `hold`, `lock`) are not
 confirmed.
