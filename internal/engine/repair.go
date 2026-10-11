@@ -132,7 +132,7 @@ func (e *Engine) forget(name string) {
 		e.setRecord(name, nil)
 		rec.Rejected = nil
 	}
-	for _, d := range []string{e.cfg.Paths.Previous(name), e.cfg.Paths.Manifests(name)} {
+	for _, d := range []string{e.cfg.Paths.Previous(name), e.cfg.Paths.Manifests(name), e.quarantineDir(name)} {
 		_ = os.RemoveAll(d)
 	}
 }

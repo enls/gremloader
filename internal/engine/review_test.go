@@ -379,3 +379,37 @@ func TestRepairChecksTheJournalsPackage(t *testing.T) {
 		t.Error("the journal was removed")
 	}
 }
+
+// Bug check of M5 (sub-agent finding 8): a quarantined download (up to 512 MiB) outlived both the
+// install that accepted it and the removal of its package.
+func TestQuarantineGoesWhenItIsAnswered(t *testing.T) {
+	r := atV1(t)
+	received := r.publishBadSums("3.0.0")
+	r.apply(r.engine(), Request{})
+	if _, ok := r.quarantineInfo(); !ok {
+		t.Fatal("not quarantined")
+	}
+	p, err := r.applyWith(r.engine(), Request{Packages: []string{"app"}},
+		ApplyOptions{Accept: &Acceptance{Package: "app", Version: "3.0.0", SHA256: received}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := item(t, p, "app"); it.Result != ResultUpdated {
+		t.Fatalf("accepted install: %+v (%v)", it, it.Err)
+	}
+	if _, ok := r.quarantineInfo(); ok {
+		t.Error("the quarantine is still there after its version was installed")
+	}
+
+	r.publishBadSums("4.0.0")
+	r.apply(r.engine(), Request{})
+	if _, ok := r.quarantineInfo(); !ok {
+		t.Fatal("4.0.0 not quarantined")
+	}
+	if it := r.engine().Remove(context.Background(), "app", RemoveOptions{}); it.Result != ResultRemoved {
+		t.Fatalf("remove = %+v", it)
+	}
+	if _, err := os.Stat(filepath.Join(r.paths.State, "quarantine", "app")); err == nil {
+		t.Error("the quarantine is still there after the package was removed")
+	}
+}

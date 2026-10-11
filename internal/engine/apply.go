@@ -161,6 +161,7 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 	_ = os.RemoveAll(stage)
+	e.clearQuarantine(it.Package, it.To)
 
 	it.Result = ResultUpdated
 	event := pkgfile.PostUpdate

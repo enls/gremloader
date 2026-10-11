@@ -124,8 +124,8 @@ lists a quarantined download.
 prompt. The download is fetched once more first (transient corruption is the common cause), as is
 an archive found damaged when nothing had verified its hash (one whose hash checked out is the
 publisher's: the same bytes would come again). A final mismatch keeps the bytes, never unpacked,
-in `state/quarantine/<pkg>/` (one per package, replaced by the next failure, at most 512 MiB, with
-an `info.json` either way), and the message names every trusted hash and its source, the hash
+in `state/quarantine/<pkg>/` (one per package, replaced by the next failure, deleted once that
+version is installed or the package removed, at most 512 MiB, with an `info.json` either way), and the message names every trusted hash and its source, the hash
 received, the likely causes without claiming malice, and the exact command to accept it.
 `--accept-sha256 <hash>` is honoured for one package and version per run, only when it equals the
 bytes received, only for a mismatch (not, say, a checksum file that does not list the asset); it
