@@ -291,13 +291,19 @@ func removeTemps(dir string, l *journal.Log) error {
 }
 
 // restore puts a backup back at dst. If the backup is gone, an earlier undo already moved it, and
-// dst must then hold exactly the saved bytes.
+// dst must then hold exactly the saved bytes. If dst still holds them (the change failed before
+// replacing it), it stays and the backup goes: dst may be a running program, which Windows does
+// not let a rename replace.
 func restore(backup, dst, sum string) error {
-	if _, err := os.Lstat(backup); errors.Is(err, fs.ErrNotExist) {
-		if got, _, herr := hashFile(dst); herr == nil && got == sum {
-			return nil
-		}
+	_, err := os.Lstat(backup)
+	got, _, herr := hashFile(dst)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && herr == nil && got == sum:
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("the backup of %s is missing and the file there is not the saved one", dst)
+	case herr == nil && got == sum:
+		return remove(backup)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil { //nolint:gosec // G301: as above
 		return err
