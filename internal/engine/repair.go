@@ -10,6 +10,7 @@ import (
 
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/journal"
+	"github.com/enls/gremloader/internal/paths"
 	"github.com/enls/gremloader/internal/pkgfile"
 	"github.com/enls/gremloader/internal/state"
 )
@@ -52,7 +53,7 @@ func (e *Engine) repairOne(ctx context.Context, name string) *Item {
 	}
 	l, err := journal.Read(jdir)
 	if err != nil {
-		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("%w; it needs a look by hand: %s", err, jdir)
+		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("%w; it needs a look by hand: %s, or `gremloader repair --forget %s` gives the change up", err, jdir, name)
 		return it
 	}
 	b := l.Begin()
@@ -65,7 +66,7 @@ func (e *Engine) repairOne(ctx context.Context, name string) *Item {
 		// A drive not connected, most likely. Undo would find nothing to undo and call that
 		// success, or recreate the folder on whatever is mounted there now.
 		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("the install folder %s is not there (a drive not connected?); "+
-			"connect it and run repair again", b.Dir)
+			"connect it and run repair again; if it is gone for good, `gremloader repair --forget %s` gives the change up", b.Dir, name)
 		return it
 	}
 
@@ -165,4 +166,65 @@ func (e *Engine) forget(name string) {
 	for _, d := range []string{e.cfg.Paths.Previous(name), e.cfg.Paths.Manifests(name), e.quarantineDir(name)} {
 		_ = os.RemoveAll(d)
 	}
+}
+
+// ResultForgotten: an interrupted change was given up (`repair --forget`).
+const ResultForgotten Result = "forgotten"
+
+// Forget gives up a package's interrupted change without finishing or undoing it (`repair
+// --forget`, decision 5 of the M5 bug check). It is the way out for a journal whose install folder
+// is gone for good, or that cannot be read. The journal and the staging area are deleted. When the
+// recorded install folder is not there, the package is recorded as not installed; when it is,
+// the record stays, and the folder may hold files of both versions.
+func (e *Engine) Forget(name string) *Item {
+	it := &Item{Package: name}
+	if !paths.ValidPackageName(name) {
+		it.fail(fmt.Errorf("package name %q is not valid", name))
+		return it
+	}
+	jdir := e.cfg.Paths.Journal(name)
+	if _, err := os.Stat(jdir); err != nil {
+		it.fail(fmt.Errorf("%s has no unfinished change to give up", name))
+		return it
+	}
+	what, dir := "unfinished change", ""
+	if l, err := journal.Read(jdir); err == nil {
+		b := l.Begin()
+		what, dir = "interrupted "+b.Action, b.Dir
+		it.From, it.To, it.Dir = b.From, b.To, b.Dir
+	}
+	rec := e.installed(name)
+	if rec != nil {
+		dir = rec.Dir
+	}
+	if err := os.RemoveAll(jdir); err != nil {
+		it.fail(err)
+		return it
+	}
+	_ = os.RemoveAll(e.cfg.Paths.Staging(name))
+
+	there := false
+	if fi, err := os.Stat(dir); dir != "" && err == nil && fi.IsDir() {
+		there = true
+	}
+	switch {
+	case rec == nil:
+		it.Reason = fmt.Sprintf("gave up the %s; %s was not installed", what, name)
+		if there {
+			it.Reason += fmt.Sprintf(", and %s may hold some of its files", dir)
+		}
+	case !there:
+		e.forget(name)
+		if err := e.saveState(); err != nil {
+			it.fail(err)
+			return it
+		}
+		it.Reason = fmt.Sprintf("gave up the %s; %s is not there, so %s is now recorded as not installed", what, dir, name)
+	default:
+		it.Reason = fmt.Sprintf("gave up the %s; %s stays recorded as %s, but %s may hold files of both versions "+
+			"(`gremloader verify %s` lists them)", what, name, rec.Version, dir, name)
+	}
+	it.Result = ResultForgotten
+	e.emit(events.Event{Level: events.Warn, Event: "repair", Package: name, Result: string(it.Result), Msg: it.Reason})
+	return it
 }
