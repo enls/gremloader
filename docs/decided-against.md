@@ -123,3 +123,11 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   `verify.signer_workflow`. See ADR 0014.
 - **Counting GitHub's release attestation as "attested".** It says the asset belongs to a release,
   not how it was built, and needs GitHub's own TUF root. Skipped, not failed. See ADR 0014.
+- **Self-update finding release candidates as drafts, with a token.** Proposed 2026-10-11 as
+  option (b). Every machine would need a token with push access to see drafts. Chosen instead:
+  after its manual run an rc is published as a GitHub pre-release, which self-update considers
+  when the running binary is an rc or with `--prerelease`. See ADR 0015.
+- **Self-update installing only the binary.** Recommended (the binary's folder may be
+  `~/.local/bin`, and the README and licences then land there too); the user chose the whole
+  archive (2026-10-11): no file filter in the engine, and the folder gets the same files a manual
+  install has. See ADR 0015.
