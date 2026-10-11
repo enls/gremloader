@@ -553,6 +553,19 @@ func readChange(l *journal.Log) (changeRecord, error) {
 	if err := json.Unmarshal(l.Begin().Result, &cr); err != nil {
 		return cr, fmt.Errorf("the journal's state records: %w", err)
 	}
+	// Repair and rollback write these records and the paths in them; the journal parser sees only
+	// opaque JSON, so they get the checks state.json gets, and must be about the journal's folder.
+	for _, p := range []*state.Package{cr.Before, cr.After} {
+		if p == nil {
+			continue
+		}
+		if err := p.Validate(); err != nil {
+			return cr, fmt.Errorf("the journal's state records: %w", err)
+		}
+		if p.Version != "" && p.Dir != l.Begin().Dir {
+			return cr, fmt.Errorf("the journal's state records are about %s, the journal about %s", p.Dir, l.Begin().Dir)
+		}
+	}
 	return cr, nil
 }
 

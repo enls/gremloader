@@ -126,7 +126,7 @@ func (s *State) Validate() error {
 			errs = append(errs, fmt.Errorf("package %s: empty record", name))
 			continue
 		}
-		if err := p.validate(); err != nil {
+		if err := p.Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("package %s: %w", name, err))
 		}
 	}
@@ -134,7 +134,8 @@ func (s *State) Validate() error {
 	return errors.Join(errs...)
 }
 
-func (p *Package) validate() error {
+// Validate checks one package record by the rules Save applies to all of them.
+func (p *Package) Validate() error {
 	var errs []error
 	bad := func(format string, a ...any) { errs = append(errs, fmt.Errorf(format, a...)) }
 

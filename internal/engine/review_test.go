@@ -2,12 +2,17 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/enls/gremloader/internal/journal"
+	"github.com/enls/gremloader/internal/state"
 )
 
 // Bug check of M5, suspicion 1: the journal records `step state` before the record step. If that
@@ -303,5 +308,74 @@ func TestTempOf(t *testing.T) {
 		if base, ok := tempOf(name); ok && base != "" {
 			t.Errorf("tempOf(%q) = %q, true", name, base)
 		}
+	}
+}
+
+// Bug check of M5 (sub-agent finding 6): the state records inside a journal's begin record are
+// opaque JSON to the journal parser. A damaged or edited journal whose "after" record names a
+// manifest outside the state directory must not make repair write there.
+func TestRepairChecksTheJournalsStateRecords(t *testing.T) {
+	r := atV1(t)
+	rec := *r.state().Packages["app"]
+	after := rec
+	after.Version, after.Manifest = "2.0.0", "../outside/m.json"
+	raw, err := json.Marshal(changeRecord{Before: &rec, After: &after})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jdir := r.paths.Journal("app")
+	j, err := journal.Create(jdir, journal.Record{Op: journal.OpBegin, ID: "x", Pkg: "app", Action: "update",
+		From: "1.0.0", To: "2.0.0", Dir: r.dir(), TS: time.Now(), Result: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Append(journal.Record{Op: journal.OpStep, Name: "state"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = j.Close()
+	m, err := state.LoadManifest(state.Path(r.paths.State, rec.Manifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SaveManifest(filepath.Join(jdir, journal.ManifestName), m); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, ri := range r.engine().Repair() {
+		if ri.Result != ResultNeedsRepair {
+			t.Errorf("repair = %+v (%v)", ri, ri.Err)
+		}
+	}
+	outside := filepath.Join(r.paths.State, "..", "outside")
+	if _, err := os.Stat(outside); err == nil {
+		t.Errorf("repair wrote outside the state directory: %s", outside)
+	}
+	if v := r.state().Packages["app"].Version; v != "1.0.0" {
+		t.Errorf("state says %s", v)
+	}
+}
+
+// A journal is acted on only under its own package's name.
+func TestRepairChecksTheJournalsPackage(t *testing.T) {
+	r := atV1(t)
+	e := r.engine()
+	e.fault = func(point string) error {
+		if point == "append" {
+			return errCrash
+		}
+		return nil
+	}
+	if err := e.Apply(context.Background(), r.plan(e, Request{}), ApplyOptions{}); !errors.Is(err, errCrash) {
+		t.Fatalf("Apply = %v", err)
+	}
+	if err := os.Rename(r.paths.Journal("app"), r.paths.Journal("other")); err != nil {
+		t.Fatal(err)
+	}
+	items := r.engine().Repair()
+	if len(items) != 1 || items[0].Package != "other" || items[0].Result != ResultNeedsRepair {
+		t.Fatalf("repair = %+v", items)
+	}
+	if !journal.Exists(r.paths.Journal("other")) {
+		t.Error("the journal was removed")
 	}
 }

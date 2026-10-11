@@ -54,6 +54,10 @@ func (e *Engine) repairOne(name string) *Item {
 		return it
 	}
 	b := l.Begin()
+	if b.Pkg != name {
+		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("the journal in %s is about package %q; it needs a look by hand", jdir, b.Pkg)
+		return it
+	}
 	it.Action, it.From, it.To, it.Dir = Action(b.Action), b.From, b.To, b.Dir
 	if fi, err := os.Stat(b.Dir); !l.Committed() && (err != nil || !fi.IsDir()) {
 		// A drive not connected, most likely. Undo would find nothing to undo and call that
