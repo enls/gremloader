@@ -371,3 +371,21 @@ func TestShow(t *testing.T) {
 		t.Errorf("show = %s", got)
 	}
 }
+
+// An inline script (sh -c '...', as the Craft file's Linux hooks are) is shown by its first line:
+// the message is about the hook failing, and the script is in the package file.
+func TestShowShortensLongArguments(t *testing.T) {
+	script := "d=$GREMLOADER_DIR p=$GREMLOADER_PACKAGE\n[ -d \"$d/share\" ] && echo x\nexit 1\n"
+	if got := show([]string{"sh", "-c", script, "craft-hook"}); got != `sh -c "d=$GREMLOADER_DIR p=$GREMLOADER_PACKAGE ..." craft-hook` {
+		t.Errorf("show = %s", got)
+	}
+	long := strings.Repeat("é", 40) // 80 bytes on its first line
+	if got := show([]string{"x", long + "\nmore"}); got != `x "`+strings.Repeat("é", 30)+` ..."` {
+		t.Errorf("show = %s", got)
+	}
+	// One line, however long, is kept: a program's path is what the reader needs.
+	path := `C:\` + strings.Repeat("folder\\", 20) + "x.exe"
+	if got := show([]string{path}); got != path {
+		t.Errorf("show = %s", got)
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/enls/gremloader/internal/engine"
 	"github.com/enls/gremloader/internal/events"
@@ -174,12 +175,32 @@ func workDir(dir string) string {
 func show(argv []string) string {
 	parts := make([]string, len(argv))
 	for i, a := range argv {
+		a = shorten(a)
 		if a == "" || strings.ContainsAny(a, " \t\n\"'") {
 			a = strconv.Quote(a)
 		}
 		parts[i] = a
 	}
 	return strings.Join(parts, " ")
+}
+
+// showArg is how much of an inline script's first line a message shows.
+const showArg = 60
+
+// shorten turns a multi-line argument (an inline script) into its first line, at most showArg
+// bytes, followed by " ...". A one-line argument, however long (a program's path), is kept whole.
+func shorten(a string) string {
+	first, _, multi := strings.Cut(a, "\n")
+	if !multi {
+		return a
+	}
+	if len(first) > showArg {
+		first = first[:showArg]
+		for !utf8.ValidString(first) {
+			first = first[:len(first)-1]
+		}
+	}
+	return strings.TrimSpace(first) + " ..."
 }
 
 // tail keeps the last max bytes written to it.
