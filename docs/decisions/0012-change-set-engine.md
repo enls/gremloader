@@ -104,6 +104,14 @@ and a remove deletes it, so those files are kept only until then: decided with t
 of the M5 bug check) to warn rather than keep a separate store. The install's plan says so, and a
 remove that deletes such a record names it.
 
+**Long paths on Windows** (decision 3 of the M5 bug check: warn, never refuse). GremLoader copes
+with paths over MAX_PATH (Go uses the long-path form), but many programs and hook scripts do not.
+After unpacking, an item gets a note (and an `apply.step` event, step `long-path`) when a file's
+full path is over 259 UTF-16 units or a folder's over 247 (MAX_PATH is 260 including the
+terminating NUL; a folder must leave room for an 8.3 name). `plan` gives the same note for an
+update from the installed version's file list, the best guess before the download. Other OSes:
+no check.
+
 **The journal starts after staging**, not at the end of the preflight as plan E.3.2 says:
 downloading, verifying and unpacking never touch the install folder, so a failure there only has
 to delete the staging area, and the begin record can carry the final state record.

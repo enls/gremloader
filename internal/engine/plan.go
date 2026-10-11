@@ -346,6 +346,13 @@ func (e *Engine) noteDrift(it *Item, rec *state.Package) {
 		it.notef("the manifest of the installed version cannot be read: %v", err)
 		return
 	}
+	// The new version's files are not known before it is downloaded; the installed ones are the
+	// best guess (apply checks again once the archive is unpacked).
+	installed := make([]string, len(m.Files))
+	for i, f := range m.Files {
+		installed[i] = f.Path
+	}
+	e.noteLongPath(it, installed, m.Dirs)
 	var changed []string
 	for _, f := range m.Files {
 		fi, err := os.Lstat(filepath.Join(it.Dir, filepath.FromSlash(f.Path)))

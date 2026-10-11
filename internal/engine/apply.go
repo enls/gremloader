@@ -131,6 +131,9 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 	got, verifiedBy, ar, tree := st.got, st.levels, st.ar, st.tree
+	if msg, ok := e.noteLongPath(it, fileList(ar), ar.Dirs); ok {
+		e.emit(events.Event{Level: events.Warn, Event: "apply.step", Package: it.Package, Step: "long-path", Msg: msg})
+	}
 
 	// 4-6. Change the install, journaled.
 	rec := e.record(it.Package)
