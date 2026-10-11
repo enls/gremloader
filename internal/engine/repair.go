@@ -55,6 +55,13 @@ func (e *Engine) repairOne(name string) *Item {
 	}
 	b := l.Begin()
 	it.Action, it.From, it.To, it.Dir = Action(b.Action), b.From, b.To, b.Dir
+	if fi, err := os.Stat(b.Dir); !l.Committed() && (err != nil || !fi.IsDir()) {
+		// A drive not connected, most likely. Undo would find nothing to undo and call that
+		// success, or recreate the folder on whatever is mounted there now.
+		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("the install folder %s is not there (a drive not connected?); "+
+			"connect it and run repair again", b.Dir)
+		return it
+	}
 
 	switch {
 	case l.Committed():

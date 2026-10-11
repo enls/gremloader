@@ -181,3 +181,46 @@ func TestJournalThatNeverBegan(t *testing.T) {
 		})
 	}
 }
+
+// Bug check of M5 (sub-agent finding 3): an update dies part-way, and repair runs while the install
+// folder is not there (a drive not connected). Undo finds nothing to remove and nothing to restore
+// to; it must not call that success and throw the journal away. Once the drive is back, repair
+// gives exactly the old version.
+func TestRepairWithTheInstallFolderAway(t *testing.T) {
+	r := atV1(t)
+	e := r.engine()
+	fsPoints := 0
+	e.fault = func(point string) error {
+		if point == "fs" {
+			if fsPoints++; fsPoints == 4 {
+				return errCrash
+			}
+		}
+		return nil
+	}
+	if err := e.Apply(context.Background(), r.plan(e, Request{}), ApplyOptions{}); !errors.Is(err, errCrash) {
+		t.Fatalf("Apply = %v", err)
+	}
+	away := r.dir() + ".away"
+	if err := os.Rename(r.dir(), away); err != nil {
+		t.Fatal(err)
+	}
+	for _, ri := range r.engine().Repair() {
+		if ri.Result != ResultNeedsRepair {
+			t.Errorf("repair without the folder = %+v (%v)", ri, ri.Err)
+		}
+	}
+	if err := os.Rename(away, r.dir()); err != nil {
+		t.Fatal(err)
+	}
+	for _, ri := range r.engine().Repair() {
+		if ri.Result != ResultRepaired {
+			t.Errorf("repair = %+v (%v)", ri, ri.Err)
+		}
+	}
+	assertTree(t, r.dir(), v1Tree)
+	if v := r.state().Packages["app"].Version; v != "1.0.0" {
+		t.Errorf("state says %s", v)
+	}
+	r.assertClean()
+}
