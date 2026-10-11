@@ -373,6 +373,10 @@ func TestFailureAtEveryPointLeavesTheOldVersion(t *testing.T) {
 					}
 				}
 				assertTree(t, r.dir(), v2Tree)
+				if v := r.state().Packages["app"].Version; v != "2.0.0" {
+					t.Errorf("fault %d (%s): state says %s after repair", k, where, v)
+				}
+				r.assertClean()
 				continue
 			}
 			assertTree(t, r.dir(), v1Tree)
