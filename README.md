@@ -54,7 +54,10 @@ What was tested: everything has automated tests, including CraftWerk's behaviour
 scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real
 one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps
 adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and
-reinstall. Not yet on Linux.
+reinstall. Attestations against the real GitHub and Sigstore, on Windows: GitHub's own CLI
+installed fresh and updated with its provenance verified, a wrong `signer_workflow` refused, a
+check that could not be made refused for an attested install, and a Craft app (no attestations)
+installed as before. Not yet on Linux.
 
 ## Building
 
