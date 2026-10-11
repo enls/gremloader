@@ -26,6 +26,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -240,6 +241,10 @@ func buildPlan(ctx context.Context, src string, format Format, l Limits, strip S
 				break
 			}
 		}
+	}
+	if !slices.ContainsFunc(p.entries, func(e planned) bool { return !e.skip && !e.dir }) {
+		// Installing this would swap an empty tree over a working install.
+		return nil, reject("", RuleEmpty, "the archive contains no files")
 	}
 	for _, d := range t.dirs {
 		p.dirs = append(p.dirs, d)

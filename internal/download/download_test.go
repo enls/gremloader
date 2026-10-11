@@ -566,8 +566,33 @@ func TestRetryAfterBeyondTheCapIsNotRetriedEarly(t *testing.T) {
 				if !errors.As(err, &rl) || rl.RetryAfter != time.Hour {
 					t.Errorf("err = %v, want a *RateLimitError carrying RetryAfter 1h", err)
 				}
+			} else {
+				var se *download.StatusError
+				if !errors.As(err, &se) || se.RetryAfter != time.Hour {
+					t.Errorf("err = %v, want a *StatusError carrying RetryAfter 1h", err)
+				}
+			}
+			// The user must be able to see why the run gave up.
+			if msg := err.Error(); !strings.Contains(msg, "retry after 1h0m0s") || !strings.Contains(msg, "longer than") {
+				t.Errorf("message %q does not say the server asked for a pause longer than this run waits", msg)
 			}
 		})
+	}
+}
+
+// A pause that was waited out and still failed is named too, without the "longer than" remark.
+func TestRetryAfterIsShownWhenItDidNotHelp(t *testing.T) {
+	r := newRig(t, "", nil, nil)
+	r.srv.Inject(fakerelease.Fault{
+		PathContains: "/releases/download/", Status: 429, Times: 10,
+		Header: map[string]string{"Retry-After": "2"},
+	})
+	_, err := r.fetch(r.webAsset())
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "retry after 2s") || strings.Contains(msg, "longer than") {
+		t.Errorf("message = %q", msg)
 	}
 }
 

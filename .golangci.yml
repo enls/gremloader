@@ -21,6 +21,18 @@ linters:
       - path: internal/testutil/
         linters:
           - gosec
+      # The Win32 version-resource API takes and hands back raw pointers: unsafe is its interface.
+      - path: internal/peversion/peversion_windows.go
+        linters:
+          - gosec
+        text: G103
+      # The engine works on paths by design: the install folder the package file names, and paths
+      # under the state directory built from validated package names. Every path read back from
+      # a journal, manifest or state file is validated (paths.ValidRel) before it is used.
+      - path: internal/engine/
+        linters:
+          - gosec
+        text: G703
 
 formatters:
   enable:

@@ -803,6 +803,38 @@ func TestOtherPackagesTagsInAMonorepoAreNotWarnedAbout(t *testing.T) {
 	}
 }
 
+// Two packages of one repository with overlapping prefixes ("app-v", "app-v2-"): app-v2-1.0.0
+// parses under "app-v" as 2.0.0-1.0.0, a valid pre-release. The longer prefix claims it, and the
+// shorter one does not see it at all (no warning either: it is a sibling's tag).
+func TestALongerSiblingPrefixClaimsItsTags(t *testing.T) {
+	for _, mode := range []github.Mode{github.ModeWeb, github.ModeAPI} {
+		t.Run(string(mode), func(t *testing.T) {
+			e := newEnv(t, "")
+			e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v1.0.0", PublishedAt: t0})
+			e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v2.0.0", PublishedAt: t0.AddDate(0, 0, 1)})
+			e.srv.AddRelease("o", "mono", fakerelease.Release{Tag: "app-v2-1.0.0", PublishedAt: t0.AddDate(0, 0, 2)})
+
+			l := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v", Exclude: []string{"app-v2-"}, Mode: mode})
+			if got := strings.Join(tags(l), ","); got != "app-v2.0.0,app-v1.0.0" {
+				t.Errorf("releases = %s, want the two app-v tags only", got)
+			}
+			for _, w := range l.Warnings {
+				if strings.Contains(w, "app-v2-1.0.0") {
+					t.Errorf("warned about the sibling's tag: %q", w)
+				}
+			}
+			if l.Latest == "app-v2-1.0.0" {
+				t.Errorf("Latest = the sibling's tag")
+			}
+
+			sib := e.list(t, github.Query{Repo: "o/mono", TagPrefix: "app-v2-", Mode: mode})
+			if got := strings.Join(tags(sib), ","); got != "app-v2-1.0.0" {
+				t.Errorf("sibling releases = %s", got)
+			}
+		})
+	}
+}
+
 // Only a link whose relation is "alternate" is the entry's own page; a "related" or "enclosure"
 // link may point anywhere in the repository, so a tag taken from it would be somebody else's.
 func TestAtomLinksOtherThanAlternateAreIgnored(t *testing.T) {

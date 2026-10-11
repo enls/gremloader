@@ -185,6 +185,41 @@ func TestSingle(t *testing.T) {
 	}
 }
 
+func TestSidecar(t *testing.T) {
+	for _, c := range []struct {
+		name, data, wantHash string
+		warn                 bool
+		wantErr              error
+	}{
+		{"bare hash", h1 + "\n", h1, false, nil},
+		{"names the asset", h1 + "  app.zip\n", h1, false, nil},
+		{"names another file", h1 + "  build-output.zip\n", h1, true, nil},
+		{"lists the asset among others", h2 + "  other.zip\n" + h1 + " *app.zip\n", h1, false, nil},
+		{"lists others only", h2 + "  other.zip\n" + h1 + "  more.zip\n", "", false, ErrConflict},
+		{"asset twice, two hashes", h1 + "  app.zip\n" + h2 + "  app.zip\n", "", false, ErrConflict},
+		{"empty", "", "", false, ErrNotListed},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e, warn, err := parse(t, c.data).Sidecar("app.zip")
+			if c.wantErr != nil {
+				if !errors.Is(err, c.wantErr) {
+					t.Errorf("err = %v, want %v", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil || e.Hash != c.wantHash {
+				t.Fatalf("got %+v, %v", e, err)
+			}
+			if (warn != "") != c.warn {
+				t.Errorf("warning = %q, want one: %v", warn, c.warn)
+			}
+			if c.warn && !strings.Contains(warn, "build-output.zip") {
+				t.Errorf("warning %q does not name the file it lists", warn)
+			}
+		})
+	}
+}
+
 func TestTooLarge(t *testing.T) {
 	_, err := Parse(strings.NewReader(strings.Repeat("a", maxFileSize+1)))
 	if !errors.Is(err, ErrTooLarge) {

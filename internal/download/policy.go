@@ -107,12 +107,26 @@ func (e *PolicyError) Error() string {
 // StatusError is a final HTTP failure: a status that is not retried, or one that stayed after
 // the last attempt.
 type StatusError struct {
-	URL  string
-	Code int
+	URL        string
+	Code       int
+	RetryAfter time.Duration // the server's requested pause; zero if none
+
+	tooLong bool // RetryAfter was more than the client waits, so the request was not repeated
 }
 
 func (e *StatusError) Error() string {
-	return fmt.Sprintf("GET %s: HTTP %d %s", e.URL, e.Code, http.StatusText(e.Code))
+	return fmt.Sprintf("GET %s: HTTP %d %s", e.URL, e.Code, http.StatusText(e.Code)) + pause(e.RetryAfter, e.tooLong)
+}
+
+// pause words a Retry-After for an error message, so the user can see why a run gave up.
+func pause(d time.Duration, tooLong bool) string {
+	if d <= 0 {
+		return ""
+	}
+	if tooLong {
+		return fmt.Sprintf(" (the server asked to retry after %v, longer than this run waits; not retried)", d)
+	}
+	return fmt.Sprintf(" (the server asked to retry after %v)", d)
 }
 
 // RateLimitError means GitHub refused because of a rate limit.
@@ -124,6 +138,8 @@ type RateLimitError struct {
 	Primary    bool
 	Reset      time.Time     // when the primary quota resets; zero if unknown
 	RetryAfter time.Duration // the server's requested pause; zero if none
+
+	tooLong bool // as in StatusError
 }
 
 func (e *RateLimitError) Error() string {
@@ -135,7 +151,7 @@ func (e *RateLimitError) Error() string {
 	if !e.Reset.IsZero() {
 		msg += ", resets at " + e.Reset.UTC().Format(time.RFC3339)
 	}
-	return msg
+	return msg + pause(e.RetryAfter, e.tooLong)
 }
 
 var (

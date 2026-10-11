@@ -36,3 +36,12 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   the file's `[settings]` instead; per-package local values still win over everything. See ADR 0011.
 - **A wait-for-the-lock mode on the run lock.** A second run fails at once with exit code 3; a
   scheduler that wants to retry can do so. Waiting hides a hung run behind a silent one.
+- **Repairing an interrupted change automatically at the start of every run.** Proposed while
+  planning M5 (2026-10-10) and turned down with the user: a failure that undo itself could not fix
+  (a file another program keeps locked, a full disk) would be retried silently every week. The
+  package is skipped as `needs-repair` (exit 6) until `gremloader repair` runs; other packages
+  still update. Leftovers of an already *committed* change are tidied automatically, since there
+  is nothing to decide. See ADR 0012.
+- **A full copy of the install folder as the rollback record** (what CraftWerk does with
+  `previous\`). Every update would copy every byte, and the copy cannot tell which files the update
+  added. The update's journal, with hard-link backups, is the rollback record instead. See ADR 0012.

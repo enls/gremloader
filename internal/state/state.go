@@ -198,19 +198,7 @@ func (p *Package) validate() error {
 	return errors.Join(errs...)
 }
 
-// validRel accepts a "/"-separated relative path that stays where it is put: no "..", no
-// absolute path, no drive letter, no backslash, no Windows device name.
-func validRel(rel string) bool {
-	if rel == "" || strings.ContainsAny(rel, `\:`) || strings.HasPrefix(rel, "/") {
-		return false
-	}
-	for c := range strings.SplitSeq(rel, "/") {
-		if c == "" || c == "." || c == ".." || paths.IsWindowsDeviceName(c) {
-			return false
-		}
-	}
-	return filepath.IsLocal(filepath.FromSlash(rel))
-}
+func validRel(rel string) bool { return paths.ValidRel(rel) }
 
 func validFileName(s string) bool {
 	if s == "" || len(s) > 255 || s == "." || s == ".." || strings.ContainsAny(s, `/\:`) {
