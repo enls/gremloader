@@ -133,6 +133,8 @@ var errCrash = errors.New("simulated crash")
 type VerifyError struct {
 	Package string
 	Msg     string
+
+	received string // set for a hash mismatch: the hash of the bytes received
 }
 
 func (e *VerifyError) Error() string { return e.Package + ": " + e.Msg }

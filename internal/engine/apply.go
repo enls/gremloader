@@ -27,11 +27,35 @@ import (
 const maxChecksumFile = 4 << 20
 
 // ApplyOptions are choices for a whole apply.
-type ApplyOptions struct{}
+type ApplyOptions struct {
+	// Accept lets one download through whose hash differs from the trusted one (plan E.3.4). It
+	// comes only from the command line, after the user checked the hash elsewhere.
+	Accept *Acceptance
+}
+
+// Acceptance is `install|update pkg@VER --accept-sha256 HASH`: for one package and one version,
+// and only if HASH is exactly the hash of the bytes received.
+type Acceptance struct {
+	Package string
+	Version string
+	SHA256  string
+}
 
 // Apply carries out the plan's items in order, updating each with its outcome. Packages are
 // independent: one failing does not stop the next. state.json is saved after every package.
 func (e *Engine) Apply(ctx context.Context, p *Plan, o ApplyOptions) error {
+	if a := o.Accept; a != nil {
+		var acting []*Item
+		for _, it := range p.Items {
+			if it.Action != ActNone {
+				acting = append(acting, it)
+			}
+		}
+		if len(acting) != 1 || acting[0].Package != a.Package || acting[0].To != a.Version {
+			return fmt.Errorf("--accept-sha256 applies to exactly one package and version (%s %s); this run would change %d package(s)",
+				a.Package, a.Version, len(acting))
+		}
+	}
 	for _, it := range p.Items {
 		if it.Action == ActNone {
 			continue
@@ -100,44 +124,13 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 
-	// 1. Download, hashing while streaming.
-	if err := e.at("download"); err != nil {
-		return failed(err)
-	}
-	assetPath := filepath.Join(work, "asset")
-	got, err := e.fetch(ctx, it, it.Asset.URL, assetPath, pkg.Limits.MaxDownload)
+	// 1-3. Download, verify, extract into staging; once more after a hash mismatch or a damaged
+	// archive that nothing had verified (plan E.3.4, E.9).
+	st, err := e.stage(ctx, it, pkg, work, o)
 	if err != nil {
 		return failed(err)
 	}
-	var sums *checksum.File
-	if it.Checksums != nil {
-		p := filepath.Join(work, "checksums")
-		if _, err := e.fetch(ctx, it, it.Checksums.URL, p, maxChecksumFile); err != nil {
-			return failed(fmt.Errorf("checksum file %s: %w", it.Checksums.Name, err))
-		}
-		if sums, err = parseChecksums(p); err != nil {
-			return failed(&VerifyError{Package: it.Package, Msg: fmt.Sprintf("checksum file %s: %v", it.Checksums.Name, err)})
-		}
-	}
-
-	// 2. Verify, before anything is unpacked.
-	if err := e.at("verify"); err != nil {
-		return failed(err)
-	}
-	verifiedBy, err := e.verify(it, pkg, got, sums)
-	if err != nil {
-		return failed(err)
-	}
-
-	// 3. Extract into staging.
-	if err := e.at("extract"); err != nil {
-		return failed(err)
-	}
-	tree := filepath.Join(work, "tree")
-	ar, err := archive.Extract(ctx, assetPath, tree, archive.Options{Limits: pkg.Limits.ArchiveLimits(), Strip: pkg.Strip})
-	if err != nil {
-		return failed(fmt.Errorf("unpacking %s: %w", it.Asset.Name, err))
-	}
+	got, verifiedBy, ar, tree := st.got, st.levels, st.ar, st.tree
 
 	// 4-6. Change the install, journaled.
 	rec := e.record(it.Package)

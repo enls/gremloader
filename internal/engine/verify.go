@@ -104,5 +104,5 @@ func (e *Engine) mismatch(it *Item, exp []trusted, got download.Result, extra st
 		"regenerate the checksum file, or tampering. Nothing was installed."
 	e.emit(events.Event{Level: events.Error, Event: "verify.fail", Package: it.Package, Version: it.To,
 		URL: it.Asset.URL, Code: "hash-mismatch", Msg: msg})
-	return &VerifyError{Package: it.Package, Msg: msg}
+	return &VerifyError{Package: it.Package, Msg: msg, received: got.SHA256}
 }
