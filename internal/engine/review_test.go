@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -93,24 +94,45 @@ func TestUnrecordedAbortIsFinishedForwardByRepair(t *testing.T) {
 
 // Bug check of M5, from suspicion 6: a read-only installed file (set by the user or by whatever
 // installed an adopted folder; extraction never makes one). Windows refuses to replace or delete
-// it. The update may fail, but it must leave exactly the old version and not need repair.
+// it. The update must leave exactly the old version and not need repair. Decision 7: on Windows
+// it fails at once (retrying cannot help) with a message saying how to clear the attribute.
 func TestReadOnlyInstalledFile(t *testing.T) {
-	r := atV1(t)
-	app := filepath.Join(r.dir(), "app.exe")
-	if err := os.Chmod(app, 0o444); err != nil {
-		t.Fatal(err)
+	// Only a replace is refused: Go's os.Remove on Windows clears the attribute itself, so a
+	// read-only file the new version drops is simply removed.
+	for _, tc := range []struct {
+		file    string
+		removed bool
+	}{{"app.exe", false}, {"lib/old.dll", true}} {
+		t.Run(tc.file, func(t *testing.T) {
+			r := atV1(t)
+			p := filepath.Join(r.dir(), filepath.FromSlash(tc.file))
+			if err := os.Chmod(p, 0o444); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
+			var slept []time.Duration
+			retrySleep = func(d time.Duration) { slept = append(slept, d) }
+			t.Cleanup(func() { retrySleep = time.Sleep })
+			it := item(t, r.apply(r.engine(), Request{}), "app")
+			got, v := tree(t, r.dir()), r.state().Packages["app"].Version
+			switch {
+			case (tc.removed || runtime.GOOS != "windows") && it.Result == ResultUpdated && maps.Equal(got, v2Tree) && v == "2.0.0":
+			case !tc.removed && it.Result == ResultFailed && maps.Equal(got, v1Tree) && v == "1.0.0":
+			default:
+				t.Fatalf("result %s (%v); state says %s and the folder holds:\n%s", it.Result, it.Err, v, show(got))
+			}
+			t.Logf("result %s: %v", it.Result, it.Err)
+			if runtime.GOOS == "windows" && !tc.removed {
+				if want := "placing " + p + `: it is read-only; clear that (attrib -r "` + p + `") and run again`; !strings.Contains(it.Err.Error(), want) {
+					t.Errorf("error = %v\nwant it to contain %s", it.Err, want)
+				}
+				if len(slept) > 0 {
+					t.Errorf("retried a read-only file: slept %v", slept)
+				}
+			}
+			r.assertClean()
+		})
 	}
-	t.Cleanup(func() { _ = os.Chmod(app, 0o644) })
-	it := item(t, r.apply(r.engine(), Request{}), "app")
-	got, v := tree(t, r.dir()), r.state().Packages["app"].Version
-	switch {
-	case it.Result == ResultUpdated && maps.Equal(got, v2Tree) && v == "2.0.0":
-	case it.Result == ResultFailed && maps.Equal(got, v1Tree) && v == "1.0.0":
-	default:
-		t.Fatalf("result %s (%v); state says %s and the folder holds:\n%s", it.Result, it.Err, v, show(got))
-	}
-	t.Logf("result %s: %v", it.Result, it.Err)
-	r.assertClean()
 }
 
 // Bug check of M5, suspicion 10: a same-version reinstall keeps the update's rollback record, whose

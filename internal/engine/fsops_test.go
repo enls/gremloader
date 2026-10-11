@@ -108,9 +108,10 @@ func TestSharingViolationsAreRetried(t *testing.T) {
 	var slept []time.Duration
 	retrySleep = func(d time.Duration) { slept = append(slept, d) }
 	t.Cleanup(func() { retrySleep = time.Sleep })
+	target := filepath.Join(t.TempDir(), "f")
 
 	n := 0
-	err := retryShared(func() error {
+	err := retryShared(target, func() error {
 		if n++; n < 3 {
 			return errSharing
 		}
@@ -121,12 +122,12 @@ func TestSharingViolationsAreRetried(t *testing.T) {
 	}
 
 	n, slept = 0, nil
-	if err := retryShared(func() error { n++; return errSharing }); !errors.Is(err, errSharing) || n != 5 {
+	if err := retryShared(target, func() error { n++; return errSharing }); !errors.Is(err, errSharing) || n != 5 {
 		t.Errorf("a lasting violation: err=%v calls=%d", err, n)
 	}
 	n = 0
 	other := errors.New("disk on fire")
-	if err := retryShared(func() error { n++; return other }); !errors.Is(err, other) || n != 1 {
+	if err := retryShared(target, func() error { n++; return other }); !errors.Is(err, other) || n != 1 {
 		t.Errorf("another error was retried: calls=%d", n)
 	}
 }

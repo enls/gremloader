@@ -312,8 +312,62 @@ func restore(backup, dst, sum string) error {
 // children), then every new file, then the old files the new version no longer has, then the old
 // folders that became empty (deepest first). Without an old manifest (an adopted install) nothing
 // is removed: what is there and was not replaced is not known to be ours.
+//
+// A path that changes kind between versions (a file that becomes a folder, or the reverse) is
+// cleared out of the way before anything else: the old file, or the old folder's files and then
+// the folder, deepest first. All of it is journaled, so undo and rollback put it back. Something
+// in the way that the old version did not install is left alone, and the mkdir or place that
+// meets it fails, naming it.
 func manifestOps(newFiles, newDirs []string, staged string, oldFiles, oldDirs []string) []op {
+	// A file is kept only if the new version has a file there, a folder only if it has a folder.
+	keepFile, keepDir := map[string]bool{}, map[string]bool{}
+	for _, f := range newFiles {
+		keepFile[f] = true
+	}
+	for _, d := range newDirs {
+		keepDir[d] = true
+	}
+	// Case-folded, as a case-insensitive file system sees them: the new folders (newDirs holds the
+	// implied ones too, as archive.Result.Dirs does) and the new files.
+	newDir, newFile := map[string]bool{}, map[string]bool{}
+	for _, d := range newDirs {
+		newDir[strings.ToLower(d)] = true
+	}
+	for _, f := range newFiles {
+		newFile[strings.ToLower(f)] = true
+	}
+	// cleared: the old folders where a new file goes; under reports whether p is in one of them.
+	var cleared []string
+	for _, d := range oldDirs {
+		if !keepDir[d] && newFile[strings.ToLower(d)] {
+			cleared = append(cleared, strings.ToLower(d)+"/")
+		}
+	}
+	under := func(p string) bool {
+		lp := strings.ToLower(p)
+		return slices.ContainsFunc(cleared, func(c string) bool { return strings.HasPrefix(lp+"/", c) })
+	}
+
 	var ops []op
+	early := map[string]bool{}
+	for _, f := range slices.Sorted(slices.Values(oldFiles)) {
+		if !keepFile[f] && (newDir[strings.ToLower(f)] || under(f)) {
+			ops = append(ops, op{kind: opRemove, path: f})
+			early[f] = true
+		}
+	}
+	var earlyDirs []string
+	for _, d := range oldDirs {
+		if !keepDir[d] && under(d) {
+			earlyDirs = append(earlyDirs, d)
+			early[d] = true
+		}
+	}
+	slices.SortFunc(earlyDirs, func(a, b string) int { return -depthThenName(a, b) })
+	for _, d := range earlyDirs {
+		ops = append(ops, op{kind: opRmdir, path: d})
+	}
+
 	dirs := slices.Clone(newDirs)
 	slices.SortFunc(dirs, func(a, b string) int { return depthThenName(a, b) })
 	for _, d := range dirs {
@@ -323,19 +377,12 @@ func manifestOps(newFiles, newDirs []string, staged string, oldFiles, oldDirs []
 	for _, f := range files {
 		ops = append(ops, op{kind: opPlace, path: f, src: filepath.Join(staged, filepath.FromSlash(f)), move: true})
 	}
-	keep := map[string]bool{}
-	for _, f := range newFiles {
-		keep[f] = true
-	}
-	for _, d := range newDirs {
-		keep[d] = true
-	}
 	for _, f := range slices.Sorted(slices.Values(oldFiles)) {
-		if !keep[f] {
+		if !keepFile[f] && !early[f] {
 			ops = append(ops, op{kind: opRemove, path: f})
 		}
 	}
-	gone := slices.DeleteFunc(slices.Clone(oldDirs), func(d string) bool { return keep[d] })
+	gone := slices.DeleteFunc(slices.Clone(oldDirs), func(d string) bool { return keepDir[d] || early[d] })
 	slices.SortFunc(gone, func(a, b string) int { return -depthThenName(a, b) })
 	for _, d := range gone {
 		ops = append(ops, op{kind: opRmdir, path: d})
