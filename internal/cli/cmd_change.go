@@ -60,11 +60,15 @@ func defineInstall(fs *flag.FlagSet) func(*call, []string) int {
 	force := fs.Bool("force", false, "reinstall the installed version")
 	updateLock := fs.Bool("update-lock", false, "afterwards, record what was installed in gremloader.lock")
 	accept := fs.String("accept-sha256", "", "accept this SHA-256 for the download although the release's checksum says otherwise (with <package>@<version>)")
+	adopt := fs.Bool("adopt", false, "record the existing folder as this package instead of installing (like the adopt command; @<version> is trusted)")
 	return func(c *call, args []string) int {
 		if len(args) != 1 {
 			return c.usagef("name one package, optionally with a version: <package>[@<version>]")
 		}
 		name, want, _ := strings.Cut(args[0], "@")
+		if *adopt {
+			return c.adopt(name, want, false)
+		}
 		ch := change{rq: engine.Request{Packages: []string{name}, Want: want, InstallMissing: true, IgnoreCooldown: *now,
 			Overlay: *overlay, CreateDir: *createDir, AllowDowngrade: *downgrade, Force: *force}, updateLock: *updateLock}
 		var code int
@@ -158,7 +162,7 @@ func (c *call) change(ch change) int {
 	if ch.planOnly || !p.Pending() {
 		return c.report(p.Items, p.Warnings, p.ExitCode(false))
 	}
-	if ok, code := c.confirm(p); !ok {
+	if ok, code := c.confirm(p.Items); !ok {
 		return code
 	}
 	if err := s.e.Apply(ctx, p, engine.ApplyOptions{Accept: ch.accept}); err != nil {
@@ -172,12 +176,12 @@ func (c *call) change(ch change) int {
 // terminal must answer. Without a terminal and without --yes nothing is changed (exit 4). --yes
 // only confirms: a downgrade, an overlay or a hash override still needs its own flag, which the
 // engine enforces.
-func (c *call) confirm(p *engine.Plan) (bool, int) {
+func (c *call) confirm(items []*engine.Item) (bool, int) {
 	if c.g.yes {
 		return true, exitcode.OK
 	}
 	if !c.g.json {
-		printItems(c.io.Stdout, p.Items, c.g.quiet)
+		printItems(c.io.Stdout, items, c.g.quiet)
 	}
 	if !c.d.stdinTTY() {
 		return false, c.failf(exitcode.Usage, "nothing was changed: there is no terminal to confirm on; run again with --yes to apply this plan")
