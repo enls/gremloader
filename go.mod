@@ -6,6 +6,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/sigstore/sigstore-go v1.3.0
+	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0
 )
@@ -60,7 +61,6 @@ require (
 	github.com/sigstore/rekor-tiles/v2 v2.3.0 // indirect
 	github.com/sigstore/sigstore v1.10.8 // indirect
 	github.com/sigstore/timestamp-authority/v2 v2.1.3 // indirect
-	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
