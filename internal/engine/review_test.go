@@ -224,3 +224,43 @@ func TestRepairWithTheInstallFolderAway(t *testing.T) {
 	}
 	r.assertClean()
 }
+
+// Bug check of M5 (sub-agent finding 4): `remove --delete-dir` renames the folder aside, then
+// deletes it and forgets the package, unjournaled. After a crash in between, the package was
+// recorded at a folder that no longer existed and every later remove failed on the rename. A
+// second `remove --delete-dir` must finish the job.
+func TestDeleteDirAfterACrash(t *testing.T) {
+	r := newRig(t, appFile)
+	write(t, filepath.Join(r.dir(), "app.exe"), "x")
+	r.engine().Adopt(context.Background(), "app", AdoptOptions{Version: "1.0.0"})
+	aside := filepath.Join(r.root, ".App.gremloader-0.tmp")
+	if err := os.Rename(r.dir(), aside); err != nil {
+		t.Fatal(err)
+	}
+	if it := r.engine().Remove(context.Background(), "app", RemoveOptions{DeleteDir: true}); it.Result != ResultRemoved {
+		t.Fatalf("remove = %+v (%v)", it, it.Err)
+	}
+	if rec := r.state().Packages["app"]; rec != nil && rec.Version != "" {
+		t.Errorf("still recorded as installed: %+v", rec)
+	}
+	if ents, _ := os.ReadDir(r.root); len(ents) != 0 {
+		t.Errorf("left behind: %v", ents)
+	}
+}
+
+// A folder that is missing together with the folder holding it is a drive not connected, not an
+// earlier delete: the package stays.
+func TestDeleteDirWithTheDriveAway(t *testing.T) {
+	r := newRig(t, appFile)
+	write(t, filepath.Join(r.dir(), "app.exe"), "x")
+	r.engine().Adopt(context.Background(), "app", AdoptOptions{Version: "1.0.0"})
+	if err := os.Rename(r.root, r.root+".away"); err != nil {
+		t.Fatal(err)
+	}
+	if it := r.engine().Remove(context.Background(), "app", RemoveOptions{DeleteDir: true}); it.Result != ResultFailed {
+		t.Fatalf("remove = %+v", it)
+	}
+	if v := r.state().Packages["app"].Version; v != "1.0.0" {
+		t.Errorf("state says %q", v)
+	}
+}

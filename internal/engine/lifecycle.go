@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -184,10 +185,12 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 				"`--delete-dir` deletes the whole folder %s", name, rec.Dir))
 			return it, nil
 		}
-		if err := deleteDir(rec.Dir); err != nil {
+		notes, err := deleteDir(rec.Dir)
+		if err != nil {
 			it.fail(err)
 			return it, nil
 		}
+		it.Notes = append(it.Notes, notes...)
 		e.forget(name)
 		if err := e.saveState(); err != nil {
 			it.fail(err)
@@ -245,14 +248,31 @@ func (e *Engine) hookMust(ctx context.Context, it *Item, pkg *pkgfile.Package, e
 }
 
 // deleteDir removes a folder whole: first renamed aside (so it is gone, or not, in one step), then
-// deleted.
-func deleteDir(dir string) error {
-	aside, err := tempName(dir)
-	if err != nil {
-		return err
+// deleted. Once it is aside the removal has happened, so what could not be deleted comes back as
+// notes, not as an error. A folder that is already gone while the folder holding it is there was
+// deleted by an earlier attempt that died before it was recorded; that attempt's leftovers go now.
+func deleteDir(dir string) (notes []string, err error) {
+	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+		if _, perr := os.Stat(filepath.Dir(dir)); perr != nil {
+			return nil, fmt.Errorf("deleting %s: neither it nor the folder holding it is there (a drive not connected?): %w", dir, perr)
+		}
+	} else {
+		aside, err := tempName(dir)
+		if err != nil {
+			return nil, err
+		}
+		if err := rename(dir, aside); err != nil {
+			return nil, fmt.Errorf("deleting %s: %w", dir, err)
+		}
 	}
-	if err := rename(dir, aside); err != nil {
-		return fmt.Errorf("deleting %s: %w", dir, err)
+	parent, base := filepath.Split(dir)
+	asides, _ := filepath.Glob(filepath.Join(parent, "."+base+".gremloader-*.tmp"))
+	for _, a := range asides {
+		if fi, err := os.Lstat(a); err == nil && fi.IsDir() {
+			if err := os.RemoveAll(a); err != nil {
+				notes = append(notes, fmt.Sprintf("%s could not be deleted completely (%v); delete it by hand", a, err))
+			}
+		}
 	}
-	return os.RemoveAll(aside)
+	return notes, nil
 }
