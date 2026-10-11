@@ -271,3 +271,16 @@ func TestVerifyRemoteReportsALostAttestation(t *testing.T) {
 		t.Errorf("%s", msg)
 	}
 }
+
+// An error that is not "unreachable" (a policy the checker cannot use) refuses the change; it is
+// not mistaken for a network problem and waved through with a warning.
+func TestAttestationPolicyErrorRefuses(t *testing.T) {
+	r := newRig(t, appFile)
+	r.attest = &fakeAttest{err: errors.New(`"o" is not owner/name`)}
+	r.publish("app", "1.0.0", 30, v1Files...)
+	p := r.apply(r.engine(), Request{InstallMissing: true})
+	var ve *VerifyError
+	if it := item(t, p, "app"); it.Result != ResultFailed || !errors.As(it.Err, &ve) || p.ExitCode(false) != exitcode.VerifyFailed {
+		t.Fatalf("%+v (exit %d)", it, p.ExitCode(false))
+	}
+}

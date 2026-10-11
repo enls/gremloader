@@ -94,3 +94,21 @@ func TestTrustedRootLive(t *testing.T) {
 		t.Errorf("cached root: %v", err)
 	}
 }
+
+// A redirect loop on the TUF host itself ends after a few hops instead of running forever.
+func TestTrustedRootRedirectLoopEnds(t *testing.T) {
+	n := 0
+	loop := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		n++
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"https://" + TUFHost + "/again"}},
+			Body: http.NoBody, Request: r}, nil
+	})
+	resp, err := onlyTUF(context.Background(), &http.Client{Transport: loop}).Get("https://" + TUFHost + "/1.root.json")
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("no error")
+	}
+	if n > 6 {
+		t.Errorf("%d requests", n)
+	}
+}

@@ -1,6 +1,7 @@
 package sigstore
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -204,5 +205,33 @@ func TestCheckSource(t *testing.T) {
 		if err := checkSource(&s, "o/app"); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// A bundle from GitHub's own Sigstore instance is skipped even when it claims build provenance:
+// it is not public-good, so it is not checked here (a private repository's, ADR 0014). Here the
+// release attestation's statement is changed to say provenance; skipping happens before any
+// signature is checked, so the broken signature does not matter, and it must not count as failed.
+func TestNonPublicGoodProvenanceIsSkipped(t *testing.T) {
+	var b map[string]any
+	if err := json.Unmarshal(release(t), &b); err != nil {
+		t.Fatal(err)
+	}
+	env := b["dsseEnvelope"].(map[string]any)
+	payload, err := base64.StdEncoding.DecodeString(env["payload"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st map[string]any
+	if err := json.Unmarshal(payload, &st); err != nil {
+		t.Fatal(err)
+	}
+	st["predicateType"] = attest.ProvenanceV1
+	payload, _ = json.Marshal(st)
+	env["payload"] = base64.StdEncoding.EncodeToString(payload)
+	forged, _ := json.Marshal(b)
+	r := check(t, [][]byte{forged}, checksumsSHA256, attest.Policy{Repo: "cli/cli"})
+	if r.Outcome != attest.None || len(r.Skipped) != 1 || !strings.Contains(r.Skipped[0], "not public-good") {
+		t.Errorf("%+v", r)
 	}
 }
