@@ -950,6 +950,31 @@ func TestZipUnixSpecialFilesAreRejected(t *testing.T) {
 	}
 }
 
+// An archive with no files must not "succeed": the engine would swap an empty tree over a
+// working install. Directories alone do not count as content.
+func TestArchiveWithoutFilesIsRejected(t *testing.T) {
+	for _, k := range []kind{zipFmt, tarFmt, tgzFmt} {
+		t.Run(k.String()+" with nothing", func(t *testing.T) {
+			mustReject(t, build(k), Options{}, RuleEmpty, "")
+		})
+		t.Run(k.String()+" with only directories", func(t *testing.T) {
+			mustReject(t, build(k, archives.D("app/"), archives.D("app/sub/")), Options{}, RuleEmpty, "")
+		})
+	}
+	t.Run("an empty tar is named as one", func(t *testing.T) {
+		_, _, _, err := run(t, archives.Tar(), Options{})
+		if errors.Is(err, ErrUnsupportedFormat) {
+			t.Errorf("err = %v, want the empty rule, not 'not an archive'", err)
+		}
+	})
+	t.Run("a zero-byte file says so", func(t *testing.T) {
+		_, _, _, err := run(t, nil, Options{})
+		if !errors.Is(err, ErrUnsupportedFormat) || !strings.Contains(err.Error(), "empty") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
 func TestEmptyNameIsRejected(t *testing.T) {
 	data := rawZip(t, func(zw *zip.Writer) {
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: "", Method: zip.Store})

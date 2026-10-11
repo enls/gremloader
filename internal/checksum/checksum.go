@@ -201,6 +201,24 @@ func (f *File) Single() (Entry, error) {
 	return first, nil
 }
 
+// Sidecar returns the hash a per-asset checksum file ("app.zip.sha256") gives for asset. An entry
+// naming asset is used if there is one. Otherwise the file's single hash is used even when its
+// line names another file, with a warning: real sidecars are sometimes generated from a build
+// output that was renamed before upload, and the hash still has to match the bytes received.
+func (f *File) Sidecar(asset string) (e Entry, warning string, err error) {
+	if e, err := f.Lookup(asset); err == nil || errors.Is(err, ErrConflict) {
+		return e, "", err
+	}
+	e, err = f.Single()
+	if err != nil {
+		return Entry{}, "", err
+	}
+	if e.Name != "" {
+		warning = fmt.Sprintf("the checksum file names %q, not %q; its hash is used anyway", e.Name, asset)
+	}
+	return e, warning, nil
+}
+
 // ParseDigest reads GitHub's asset digest form "sha256:<64 hex>".
 func ParseDigest(s string) (string, error) {
 	algo, h, ok := strings.Cut(strings.TrimSpace(s), ":")

@@ -60,6 +60,11 @@ stream itself is capped (declared total + headers for the allowed entry count + 
 that carries no file cannot expand without bound. A header that lies about size is `size-mismatch`
 or `corrupt`, naming the entry.
 
+**Empty.** An archive with no files (nothing at all, or only directories) is `empty`
+(amendment, 2026-10-10, M5): the engine would otherwise swap an empty tree over a working install.
+A tar with no entries is only its zero end-of-archive blocks and is recognised as a tar for this
+purpose; a zero-byte file is "not an archive" and says it is empty.
+
 **Modes.** Files become 0644, or 0755 if any execute bit was set; directories 0755. setuid, setgid
 and sticky bits never reach the disk. Owners and times are not applied.
 

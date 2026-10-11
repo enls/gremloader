@@ -56,6 +56,9 @@ const (
 	// Damage.
 	RuleCorrupt         Rule = "corrupt"
 	RuleCompressionKind Rule = "unsupported-compression"
+
+	// The whole archive.
+	RuleEmpty Rule = "empty"
 )
 
 // RejectError means the archive was refused because of one of its entries. Nothing is left in

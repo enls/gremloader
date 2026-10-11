@@ -109,7 +109,11 @@ func New(c *download.Client, o Options) *Source {
 type Query struct {
 	Repo      string // "owner/repo"
 	TagPrefix string // stripped from tags before parsing versions ("" for none)
-	Mode      Mode   // "" means auto
+	// Exclude lists longer tag prefixes that belong to other packages of the same repository. A tag
+	// starting with one is theirs: "app-v2-1.0.0" is not version 2.0.0-1.0.0 of the "app-v" package
+	// when an "app-v2-" package exists. The longest prefix wins; the engine fills this in.
+	Exclude []string
+	Mode    Mode // "" means auto
 	// NeedAPIData is set when the answer is wrong without API-only data (the prerelease channel
 	// needs GitHub's prerelease flag). The web path is then not an acceptable fallback.
 	NeedAPIData bool
@@ -256,15 +260,16 @@ func worthFallingOver(err error) bool {
 
 // listBuilder applies the tag rules shared by both paths.
 type listBuilder struct {
-	repo   string
-	prefix string
-	seen   map[string]bool
-	out    []Release
-	warn   []string
+	repo    string
+	prefix  string
+	exclude []string
+	seen    map[string]bool
+	out     []Release
+	warn    []string
 }
 
 func newBuilder(q Query) *listBuilder {
-	return &listBuilder{repo: q.Repo, prefix: q.TagPrefix, seen: map[string]bool{}}
+	return &listBuilder{repo: q.Repo, prefix: q.TagPrefix, exclude: q.Exclude, seen: map[string]bool{}}
 }
 
 func (b *listBuilder) warnf(format string, args ...any) {
@@ -289,6 +294,11 @@ func (b *listBuilder) add(r Release) int {
 	}
 	if b.prefix != "" && !strings.HasPrefix(r.Tag, b.prefix) {
 		return -1 // another package's tag in a shared repository: expected, not worth a warning
+	}
+	for _, x := range b.exclude {
+		if strings.HasPrefix(r.Tag, x) {
+			return -1 // a sibling package with a longer prefix owns it
+		}
 	}
 	v, err := ver.FromTag(r.Tag, b.prefix)
 	if err != nil {

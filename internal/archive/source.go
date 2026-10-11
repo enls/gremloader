@@ -58,6 +58,11 @@ func Detect(path string) (Format, error) {
 
 func detect(head []byte) (Format, error) {
 	switch {
+	case len(head) == 0:
+		return FormatUnknown, fmt.Errorf("%w: the file is empty", ErrUnsupportedFormat)
+	case len(head) == 512 && bytes.Equal(head, make([]byte, 512)):
+		// A tar with no entries is only its end-of-archive marker: zero blocks, no "ustar" to see.
+		return FormatTar, nil
 	case bytes.HasPrefix(head, []byte("PK\x03\x04")), bytes.HasPrefix(head, []byte("PK\x05\x06")):
 		return FormatZip, nil
 	case bytes.HasPrefix(head, []byte{0x1f, 0x8b}):

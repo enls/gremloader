@@ -449,7 +449,7 @@ func (c *Client) statusError(resp *http.Response, shown string) outcome {
 	limited := code == http.StatusTooManyRequests ||
 		(code == http.StatusForbidden && (h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0"))
 	if limited {
-		rl := &RateLimitError{URL: shown, Status: code, RetryAfter: retryAfter}
+		rl := &RateLimitError{URL: shown, Status: code, RetryAfter: retryAfter, tooLong: tooLong}
 		if v, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil {
 			rl.Reset = time.Unix(v, 0)
 		}
@@ -461,7 +461,7 @@ func (c *Client) statusError(resp *http.Response, shown string) outcome {
 		}
 		return outcome{err: rl, retry: !tooLong, wait: retryAfter}
 	}
-	se := &StatusError{URL: shown, Code: code}
+	se := &StatusError{URL: shown, Code: code, RetryAfter: retryAfter, tooLong: tooLong}
 	if code >= 500 {
 		return outcome{err: se, retry: !tooLong, wait: retryAfter}
 	}
