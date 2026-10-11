@@ -171,6 +171,9 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 	if rec == nil {
 		return it, nil
 	}
+	// A rollback record with no state pointer to it is what an --overlay install keeps of the files
+	// it overwrote (decision 1 of the M5 bug check); the remove discards it, so say so.
+	overlay := rec.Previous == nil && journal.Exists(e.cfg.Paths.Previous(name))
 	pkg := e.cfg.Packages.Packages[name]
 	if pkg != nil {
 		if err := e.hookMust(ctx, it, pkg, pkgfile.PreRemove); err != nil {
@@ -223,6 +226,9 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 			it.fail(err)
 			return it, nil
 		}
+	}
+	if overlay {
+		it.notef("discarded the backups of the files the --overlay install overwrote (%s)", e.cfg.Paths.Previous(name))
 	}
 	it.Result = ResultRemoved
 	e.emit(events.Event{Level: events.Info, Event: "remove", Package: name, From: it.From})

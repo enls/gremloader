@@ -99,7 +99,10 @@ older one is moved aside first and deleted after, so a crash in between leaves s
 `tidy` finishes). A same-version reinstall keeps the existing rollback record and drops its own;
 a first install has nothing to roll back to. An `--overlay` install keeps its journal in
 `previous/<pkg>/` without pointing state at it: it holds the user's files that the install
-replaced, and `state.json`'s rollback record must name a version.
+replaced, and `state.json`'s rollback record must name a version. The next update replaces it
+and a remove deletes it, so those files are kept only until then: decided with the user (decision 1
+of the M5 bug check) to warn rather than keep a separate store. The install's plan says so, and a
+remove that deletes such a record names it.
 
 **The journal starts after staging**, not at the end of the preflight as plan E.3.2 says:
 downloading, verifying and unpacking never touch the install folder, so a failure there only has

@@ -329,7 +329,8 @@ func checkInstallDir(it *Item) error {
 			"`gremloader adopt %s` records what is there, --overlay installs over it", it.Dir, it.Package)
 	}
 	if len(ents) > 0 {
-		it.notef("installing over the existing contents of %s (--overlay); files it replaces are backed up", it.Dir)
+		it.notef("installing over the existing contents of %s (--overlay); the files it overwrites are backed up, "+
+			"but kept only until the next update or remove of %s", it.Dir, it.Package)
 	}
 	return nil
 }
