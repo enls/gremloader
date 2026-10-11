@@ -18,7 +18,9 @@ import (
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/journal"
+	"github.com/enls/gremloader/internal/lock"
 	"github.com/enls/gremloader/internal/pkgfile"
+	"github.com/enls/gremloader/internal/proc"
 	"github.com/enls/gremloader/internal/state"
 	"github.com/enls/gremloader/internal/ver"
 )
@@ -100,17 +102,19 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 	if err := e.unfinished(it.Package); err != nil {
 		return failed(err)
 	}
-	if procs, err := e.cfg.Running(it.Dir); err != nil {
-		return failed(fmt.Errorf("checking for running programs: %w", err))
-	} else if len(procs) > 0 {
-		var names []string
-		for _, p := range procs {
-			names = append(names, fmt.Sprintf("%s (pid %d)", filepath.Base(p.Path), p.PID))
-		}
-		it.Action, it.Result = ActNone, ResultSkipped
-		it.Reason = "running: " + strings.Join(names, ", ") + "; close it and run again"
+	skipped := func(procs []proc.Process) error {
+		_ = os.RemoveAll(stage)
+		skipRunning(it, procs)
 		e.emit(events.Event{Level: events.Warn, Event: "apply.abort", Package: it.Package, Result: string(it.Result), Msg: it.Reason})
 		return nil
+	}
+	// A shared folder's own files are known only once the release is staged (below).
+	if !it.Shared {
+		if procs, err := e.running(it.Dir, false, nil); err != nil {
+			return failed(fmt.Errorf("checking for running programs: %w", err))
+		} else if len(procs) > 0 {
+			return skipped(procs)
+		}
 	}
 	if err := e.checkSpace(e.cfg.Paths.State, it.Asset.Size); err != nil {
 		return failed(err)
@@ -131,6 +135,12 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 	got, verifiedBy, ar, tree := st.got, st.levels, st.ar, st.tree
+	if slices.Contains(verifiedBy, lock.HashOverride) {
+		it.Override = &lock.Asset{Asset: it.Asset.Name, URL: it.Asset.URL, SHA256: got.SHA256, Size: got.Size}
+	}
+	if msg, ok := e.noteLongPath(it, fileList(ar), ar.Dirs); ok {
+		e.emit(events.Event{Level: events.Warn, Event: "apply.step", Package: it.Package, Step: "long-path", Msg: msg})
+	}
 
 	// 4-6. Change the install, journaled.
 	rec := e.record(it.Package)
@@ -145,11 +155,21 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		}
 		oldDirs = m.Dirs
 	}
+	if it.Shared {
+		if procs, err := e.running(it.Dir, true, append(slices.Clone(oldFiles), fileList(ar)...)); err != nil {
+			return failed(fmt.Errorf("checking for running programs: %w", err))
+		} else if len(procs) > 0 {
+			return skipped(procs)
+		}
+	}
+	if err := e.ownedByOthers(it.Package, it.Dir, fileList(ar)); err != nil {
+		return failed(err)
+	}
 	createdDir, err := ensureDir(it.Dir)
 	if err != nil {
 		return failed(err)
 	}
-	newManifest := manifestOf(ar, it.Dir, oldDirs)
+	newManifest := manifestOf(ar, it.Dir, oldDirs, it.Shared)
 	result := e.installedRecord(it, rec, verifiedBy, got.SHA256)
 	if err := e.change(ctx, it, result, newManifest, manifestOps(fileList(ar), ar.Dirs, tree, oldFiles, oldDirs)); err != nil {
 		if errors.Is(err, errCrash) {
@@ -373,7 +393,7 @@ func (e *Engine) installedRecord(it *Item, rec *state.Package, verifiedBy []stri
 	now := e.now()
 	r := &state.Package{
 		Version: it.To, Tag: it.Release.Tag, Dir: it.Dir, Asset: it.Asset.Name, AssetSHA256: assetSHA,
-		InstalledAt: &now, VerifiedBy: verifiedBy, Manifest: state.ManifestRel(it.Package, it.To),
+		InstalledAt: &now, VerifiedBy: verifiedBy, Manifest: state.ManifestRel(it.Package, it.To), SharedDir: it.Shared,
 	}
 	switch it.Action {
 	case ActUpdate, ActDowngrade:
@@ -401,7 +421,7 @@ func (e *Engine) setRecord(name string, r *state.Package) {
 	keep := state.Package{LatestSeen: cur.LatestSeen, LastCheck: cur.LastCheck, LastError: cur.LastError}
 	if r != nil {
 		keep.Version, keep.Tag, keep.Dir, keep.Asset, keep.AssetSHA256 = r.Version, r.Tag, r.Dir, r.Asset, r.AssetSHA256
-		keep.InstalledAt, keep.Adopted, keep.VerifiedBy, keep.Attested = r.InstalledAt, r.Adopted, r.VerifiedBy, r.Attested
+		keep.InstalledAt, keep.Adopted, keep.SharedDir, keep.VerifiedBy, keep.Attested = r.InstalledAt, r.Adopted, r.SharedDir, r.VerifiedBy, r.Attested
 		keep.Manifest, keep.Previous, keep.Rejected = r.Manifest, r.Previous, r.Rejected
 	}
 	*cur = keep
@@ -431,14 +451,19 @@ func (e *Engine) pruneManifests(name string) {
 }
 
 // manifestOf describes the extracted tree. Its folders are those GremLoader may later delete when
-// empty: the ones that do not exist yet, plus those an earlier version already created.
-func manifestOf(ar *archive.Result, dir string, oldDirs []string) *state.Manifest {
+// empty: the ones that do not exist yet, plus those an earlier version already created. In a
+// shared folder the top-level folders (bin, share) are never the package's, as CraftWerk never
+// removed its prefix's own bin/ and share/.
+func manifestOf(ar *archive.Result, dir string, oldDirs []string, shared bool) *state.Manifest {
 	m := &state.Manifest{SchemaVersion: state.SchemaVersion}
 	for _, f := range ar.Files {
 		m.Files = append(m.Files, state.ManifestFile{Path: f.Path, Size: f.Size, SHA256: f.SHA256, Exec: f.Mode&0o111 != 0})
 	}
 	slices.SortFunc(m.Files, func(a, b state.ManifestFile) int { return strings.Compare(a.Path, b.Path) })
 	for _, d := range ar.Dirs {
+		if shared && !strings.Contains(d, "/") {
+			continue
+		}
 		if slices.Contains(oldDirs, d) {
 			m.Dirs = append(m.Dirs, d)
 			continue
@@ -524,11 +549,21 @@ func (e *Engine) runHook(ctx context.Context, it *Item, pkg *pkgfile.Package, ev
 	}
 	h := Hook{Package: it.Package, Event: event, Action: action, Version: it.To, Previous: it.From, Dir: it.Dir,
 		Commands: cmds, Timeout: pkg.HookTimeout}
+	if event == pkgfile.PostRemove {
+		h.Previous = "" // as in pre_remove: VERSION is the version removed, nothing came before it
+	}
 	e.emit(events.Event{Level: events.Info, Event: "hook.run", Package: it.Package, Step: event})
 	if err := e.cfg.Hooks.Run(ctx, h); err != nil {
 		e.emit(events.Event{Level: events.Warn, Event: "hook.fail", Package: it.Package, Step: event, Msg: err.Error()})
 		if pkg.HookFail == "fail" {
-			it.Result, it.Err = ResultFailed, fmt.Errorf("installed, but the %s hook failed: %w", event, err)
+			done := "installed"
+			switch event {
+			case pkgfile.PostUpdate:
+				done = "updated"
+			case pkgfile.PostRemove:
+				done = "removed"
+			}
+			it.Result, it.Err = ResultFailed, fmt.Errorf("%s, but the %s hook failed: %w", done, event, err)
 			return
 		}
 		it.notef("the %s hook failed: %v", event, err)

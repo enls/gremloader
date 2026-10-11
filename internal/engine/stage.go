@@ -117,7 +117,7 @@ func (e *Engine) accepted(it *Item, o ApplyOptions, got download.Result) bool {
 	}
 	e.emit(events.Event{Level: events.Warn, Event: "verify.ok", Package: it.Package, Version: it.To, URL: it.Asset.URL,
 		Code: "hash-override", Msg: "accepted " + got.SHA256 + " by --accept-sha256 although it differs from the trusted hash"})
-	it.notef("installed with --accept-sha256 %s: the hash differs from the trusted one", got.SHA256)
+	it.notef("accepted by --accept-sha256 %s: the hash differs from the trusted one", got.SHA256)
 	return true
 }
 
@@ -193,7 +193,11 @@ func (e *Engine) quarantine(it *Item, asset string, ve *VerifyError) string {
 	if !info.Kept {
 		return fmt.Sprintf("The download (%d MiB) is too large to keep; what is known about it is in %s.", fi.Size()>>20, dir)
 	}
+	force := ""
+	if it.From == it.To { // the installed version (verify --remote, or install --force) is only reinstalled with --force
+		force = " --force"
+	}
 	return "The download is kept, never unpacked, in " + dir + " for inspection. If you have checked the hash " +
 		"received elsewhere (the release page, a second download, the author), install it with " +
-		fmt.Sprintf("`gremloader install %s@%s --accept-sha256 %s`.", it.Package, it.To, ve.received)
+		fmt.Sprintf("`gremloader install %s@%s --accept-sha256 %s%s`.", it.Package, it.To, ve.received, force)
 }

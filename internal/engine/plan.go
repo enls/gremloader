@@ -98,7 +98,7 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 		it.From = rec.Version
 	}
 	if !pkg.Enabled {
-		it.Result, it.Reason = ResultSkipped, "disabled"
+		it.Result, it.Reason = ResultSkipped, reasonDisabled
 		return it
 	}
 	if err := e.unfinished(name); err != nil {
@@ -112,6 +112,8 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 		return it
 	}
 	it.Dir = dir
+	// Once installed into a shared folder, always treated as one: that is the safe direction.
+	it.Shared = pkg.SharedDir(e.cfg.Platform.OS) || rec != nil && rec.SharedDir
 	if rec != nil && rec.Version != "" && rec.Dir != dir {
 		// Moving an install is not something an update does. Keep working where it is.
 		it.notef("the package file now says %s; the install stays in %s", dir, rec.Dir)
@@ -175,6 +177,9 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 	}
 	it.Action, it.Result, it.Reason = d.Action, d.Result, d.Reason
 	if d.Action == ActNone {
+		if in.Installed == "" && it.Result == ResultSkipped {
+			e.noteAdoptable(it)
+		}
 		return it
 	}
 	it.Release, it.To = *d.Release, d.Release.Version.String()
@@ -305,7 +310,8 @@ func (e *Engine) checkVerifiable(it *Item, pkg *pkgfile.Package) error {
 }
 
 // checkInstallDir applies P3-4 to a fresh install: an existing non-empty folder that GremLoader
-// does not manage is refused without --overlay, and a missing parent needs --create-dir.
+// does not manage is refused without --overlay (a shared folder is expected to hold other
+// things), and a missing parent needs --create-dir.
 func checkInstallDir(it *Item) error {
 	fi, err := os.Stat(it.Dir)
 	switch {
@@ -324,14 +330,29 @@ func checkInstallDir(it *Item) error {
 	if err != nil {
 		return err
 	}
-	if len(ents) > 0 && !it.Overlay {
+	if len(ents) > 0 && !it.Overlay && !it.Shared {
 		return fmt.Errorf("the folder %s is not empty and GremLoader did not install it; "+
 			"`gremloader adopt %s` records what is there, --overlay installs over it", it.Dir, it.Package)
 	}
-	if len(ents) > 0 {
-		it.notef("installing over the existing contents of %s (--overlay); files it replaces are backed up", it.Dir)
+	if len(ents) > 0 && !it.Shared {
+		it.notef("installing over the existing contents of %s (--overlay); the files it overwrites are backed up, "+
+			"but kept only until the next update or remove of %s", it.Dir, it.Package)
 	}
 	return nil
+}
+
+// noteAdoptable points at adopt when a package that is not installed already has files in its
+// folder (an install from before GremLoader, a CraftWerk folder): `check` says so, as `plan` does.
+func (e *Engine) noteAdoptable(it *Item) {
+	ents, err := os.ReadDir(it.Dir)
+	if err != nil || len(ents) == 0 {
+		return
+	}
+	if it.Shared {
+		it.notef("%s already holds files; `gremloader adopt %s --verify` records the ones that match a release", it.Dir, it.Package)
+		return
+	}
+	it.notef("%s already holds files; `gremloader adopt %s` records what is there", it.Dir, it.Package)
 }
 
 // noteDrift compares the install with its manifest by presence and size (P3-9). Hashing every file
@@ -345,6 +366,13 @@ func (e *Engine) noteDrift(it *Item, rec *state.Package) {
 		it.notef("the manifest of the installed version cannot be read: %v", err)
 		return
 	}
+	// The new version's files are not known before it is downloaded; the installed ones are the
+	// best guess (apply checks again once the archive is unpacked).
+	installed := make([]string, len(m.Files))
+	for i, f := range m.Files {
+		installed[i] = f.Path
+	}
+	e.noteLongPath(it, installed, m.Dirs)
 	var changed []string
 	for _, f := range m.Files {
 		fi, err := os.Lstat(filepath.Join(it.Dir, filepath.FromSlash(f.Path)))

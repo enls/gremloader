@@ -25,8 +25,30 @@ exact versions and checksums in a lock file, and a plan-then-apply workflow.
 
 ## Current state
 
-Phase 0 (foundation): the repository, licences, build and test scaffolding, and
-`gremloader version`. There is nothing to install and update yet.
+Phase 1 (GitHub releases) is built but not released: no binary is published yet, so build it
+from source (below). It installs, updates, rolls back and removes software published as GitHub
+release assets, on Windows and Linux:
+
+- `check`, `plan`, `apply`, `install`, `update`, `remove`, `rollback`, `verify`, `adopt`,
+  `repair`, `pin`/`unpin`, `hold`/`unhold`, `lock`, `explain`, `log`; `--json` on every command,
+  stable exit codes (`gremloader help` lists them all).
+- Downloads are checked against the release's checksum file (or GitHub's digest) before anything
+  is unpacked; a mismatch is refused, never prompted.
+- Every change is journaled: a failure or a crash at any point leaves the old version or the new
+  one, never a mix (`repair` finishes an interrupted run). One version back is kept for `rollback`.
+- Hooks (`post_install`, `post_update`, `pre_remove`, `post_remove`) run as argument lists, never
+  through a shell, with a timeout.
+- [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with
+  notes on moving over from CraftWerk.
+
+Not there yet: attestation checks (next), updating GremLoader itself, the scheduled run, other
+sources (apt, winget, Docker Compose) and the web UI.
+
+What was tested: everything has automated tests, including CraftWerk's behaviours ported as a
+scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real
+one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps
+adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and
+reinstall. Not yet on Linux.
 
 ## Building
 

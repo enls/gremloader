@@ -44,6 +44,7 @@ type Package struct {
 	AssetSHA256 string     `json:"asset_sha256,omitempty"`
 	InstalledAt *time.Time `json:"installed_at,omitempty"`
 	Adopted     bool       `json:"adopted,omitempty"`
+	SharedDir   bool       `json:"shared_dir,omitempty"` // installed into a folder other packages share (shared_dir)
 	VerifiedBy  []string   `json:"verified_by,omitempty"`
 	Attested    bool       `json:"attested,omitempty"`
 	Manifest    string     `json:"manifest,omitempty"` // relative to the state dir, "/"-separated
@@ -141,7 +142,7 @@ func (p *Package) Validate() error {
 
 	if p.Version == "" {
 		if p.Tag != "" || p.Dir != "" || p.Asset != "" || p.AssetSHA256 != "" || p.InstalledAt != nil ||
-			p.Adopted || len(p.VerifiedBy) > 0 || p.Attested || p.Manifest != "" || p.Previous != nil {
+			p.Adopted || p.SharedDir || len(p.VerifiedBy) > 0 || p.Attested || p.Manifest != "" || p.Previous != nil {
 			bad("has installation details but no version")
 		}
 	} else {

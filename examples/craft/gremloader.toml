@@ -1,0 +1,115 @@
+# The twelve Craft apps (github.com/storytold), as CraftWerk installs them.
+#
+# Windows: each app in its own folder under {root} (default C:\CraftWerk, or --root), with file
+# types and Start menu entries registered by CraftWerk's register-apps.ps1 after every change.
+# Linux: every app unpacks bin/ and share/ into ~/.local, a folder they share (shared_dir).
+#
+# See README.md next to this file for using it and for moving over from CraftWerk.
+schema_version = 1
+
+[vars]
+root = 'C:\CraftWerk'
+
+[settings]
+channel = "stable"
+verify  = { require = ["checksum"] }
+
+[preset.craft]
+checksums = "SHA256SUMS.txt"
+asset = { "windows/amd64" = "{name}-{version}-windows-x64-portable.zip",
+          "windows/arm64" = "{name}-{version}-windows-arm64-portable.zip",
+          "windows/386"   = "{name}-{version}-windows-x86-portable.zip",
+          "linux/amd64"   = "{name}-{version}-linux-x86_64.tar.gz",
+          "linux/arm64"   = "{name}-{version}-linux-aarch64.tar.gz" }
+dir        = { windows = '{root}\{Name}', linux = "~/.local" }
+shared_dir = { linux = true }
+version_from_exe = { windows = "{name}.exe" }
+
+# Windows: file types, Default apps and the Start menu entry for this one app.
+# Linux: refresh the desktop's menu, file-type and icon caches; after an install or update, say
+# which system libraries the app is missing and whether ~/.local/bin is on PATH (the menu
+# entries start the app by name). Exit 1 = shown as a warning; the install itself stands.
+post_install.windows = [["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", '{root}\_update\register-apps.ps1', "-Only", "{name}"]]
+post_install.linux = [["sh", "-c", '''
+d=$GREMLOADER_DIR p=$GREMLOADER_PACKAGE w=
+[ -d "$d/share/applications" ] && command -v update-desktop-database >/dev/null && update-desktop-database "$d/share/applications"
+[ -d "$d/share/mime" ] && command -v update-mime-database >/dev/null && update-mime-database "$d/share/mime"
+[ -d "$d/share/icons/hicolor" ] && command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$d/share/icons/hicolor"
+[ "$GREMLOADER_ACTION" = remove ] && exit 0
+m=$(ldd "$d/bin/$p" 2>/dev/null | sed -n 's/^[[:space:]]*\([^ ]*\) => not found.*/\1/p' | sort -u | tr '\n' ' ')
+[ -n "$m" ] && w="$p needs libraries this system lacks: $m(install them with your package manager)."
+case ":$PATH:" in *":$d/bin:"*) ;; *) w="$w $d/bin is not on PATH, so the menu entries cannot start $p." ;; esac
+[ -z "$w" ] && exit 0
+echo $w; exit 1
+''', "craft-hook"]]
+post_update.windows = [["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", '{root}\_update\register-apps.ps1', "-Only", "{name}"]]
+post_update.linux = [["sh", "-c", '''
+d=$GREMLOADER_DIR p=$GREMLOADER_PACKAGE w=
+[ -d "$d/share/applications" ] && command -v update-desktop-database >/dev/null && update-desktop-database "$d/share/applications"
+[ -d "$d/share/mime" ] && command -v update-mime-database >/dev/null && update-mime-database "$d/share/mime"
+[ -d "$d/share/icons/hicolor" ] && command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$d/share/icons/hicolor"
+[ "$GREMLOADER_ACTION" = remove ] && exit 0
+m=$(ldd "$d/bin/$p" 2>/dev/null | sed -n 's/^[[:space:]]*\([^ ]*\) => not found.*/\1/p' | sort -u | tr '\n' ' ')
+[ -n "$m" ] && w="$p needs libraries this system lacks: $m(install them with your package manager)."
+case ":$PATH:" in *":$d/bin:"*) ;; *) w="$w $d/bin is not on PATH, so the menu entries cannot start $p." ;; esac
+[ -z "$w" ] && exit 0
+echo $w; exit 1
+''', "craft-hook"]]
+post_remove.windows = [["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", '{root}\_update\register-apps.ps1', "-Only", "{name}"]]
+post_remove.linux = [["sh", "-c", '''
+d=$GREMLOADER_DIR
+[ -d "$d/share/applications" ] && command -v update-desktop-database >/dev/null && update-desktop-database "$d/share/applications"
+[ -d "$d/share/mime" ] && command -v update-mime-database >/dev/null && update-mime-database "$d/share/mime"
+[ -d "$d/share/icons/hicolor" ] && command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$d/share/icons/hicolor"
+exit 0
+''', "craft-hook"]]
+
+[package.cadcraft]
+use = "craft"
+repo = "storytold/cadcraft"
+
+[package.deckcraft]
+use = "craft"
+repo = "storytold/deckcraft"
+
+[package.designcraft]
+use = "craft"
+repo = "storytold/designcraft"
+
+[package.effectcraft]
+use = "craft"
+repo = "storytold/effectcraft"
+
+[package.filmcraft]
+use = "craft"
+repo = "storytold/filmcraft"
+
+[package.gridcraft]
+use = "craft"
+repo = "storytold/gridcraft"
+
+[package.lightcraft]
+use = "craft"
+repo = "storytold/lightcraft"
+
+# pdfcraft also ships pdfcraft-cli-<version>-linux-*.tar.gz; the exact asset names above never
+# match it.
+[package.pdfcraft]
+use = "craft"
+repo = "storytold/pdfcraft"
+
+[package.photocraft]
+use = "craft"
+repo = "storytold/photocraft"
+
+[package.soundcraft]
+use = "craft"
+repo = "storytold/soundcraft"
+
+[package.vectorcraft]
+use = "craft"
+repo = "storytold/vectorcraft"
+
+[package.wordcraft]
+use = "craft"
+repo = "storytold/wordcraft"

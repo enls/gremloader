@@ -1,0 +1,52 @@
+$ gremloader log --pkg app
+exit 0
+--- stdout
+<TIME> info  check.ok app 1.0.0
+<TIME> info  check.ok app 1.0.0
+<TIME> info  check.ok app 1.0.0
+<TIME> info  apply.begin app 1.0.0 install
+<TIME> info  download.start app 1.0.0
+<TIME> info  download.done app 1.0.0
+<TIME> info  download.start app 1.0.0
+<TIME> info  download.done app 1.0.0
+<TIME> info  verify.ok app 1.0.0 [checksum]
+<TIME> info  apply.commit app 1.0.0 installed
+<TIME> info  check.ok app 1.0.0 -> 2.0.0
+<TIME> info  check.ok app 1.0.0 -> 2.0.0
+<TIME> info  check.ok app 1.0.0 -> 2.0.0
+<TIME> info  apply.begin app 1.0.0 -> 2.0.0 update
+<TIME> info  download.start app 2.0.0
+<TIME> info  download.done app 2.0.0
+<TIME> info  download.start app 2.0.0
+<TIME> info  download.done app 2.0.0
+<TIME> info  verify.ok app 2.0.0 [checksum]
+<TIME> info  apply.commit app 1.0.0 -> 2.0.0 updated
+<TIME> info  rollback app 2.0.0 -> 1.0.0
+<TIME> info  check.ok app 1.0.0 -> 3.0.0
+<TIME> info  apply.begin app 1.0.0 -> 3.0.0 update
+<TIME> info  download.start app 3.0.0
+<TIME> info  download.done app 3.0.0
+<TIME> info  download.start app 3.0.0
+<TIME> info  download.done app 3.0.0
+<TIME> error verify.fail app 3.0.0 hash-mismatch: app-3.0.0.zip does not match what it was checked against.
+      expected abababababababababababababababababababababababababababababababab (SHA256SUMS.txt line 1): DIFFERS
+      received 0877f6d9978ab9f87ff4d2b010dba9292b4916e372c0cf8a8fb4632d52bdf56e, 182 bytes, from <WEB>/o/app/releases/download/v3.0.0/app-3.0.0.zip
+    Likely causes: a corrupt or truncated download, a caching proxy or CDN, a publisher who did not regenerate the checksum file, or tampering. Nothing was installed.
+<TIME> warn  download.retry app 3.0.0: app: app-3.0.0.zip does not match what it was checked against.
+      expected abababababababababababababababababababababababababababababababab (SHA256SUMS.txt line 1): DIFFERS
+      received 0877f6d9978ab9f87ff4d2b010dba9292b4916e372c0cf8a8fb4632d52bdf56e, 182 bytes, from <WEB>/o/app/releases/download/v3.0.0/app-3.0.0.zip
+    Likely causes: a corrupt or truncated download, a caching proxy or CDN, a publisher who did not regenerate the checksum file, or tampering. Nothing was installed.
+<TIME> info  download.start app 3.0.0
+<TIME> info  download.done app 3.0.0
+<TIME> info  download.start app 3.0.0
+<TIME> info  download.done app 3.0.0
+<TIME> error verify.fail app 3.0.0 hash-mismatch: app-3.0.0.zip does not match what it was checked against.
+      expected abababababababababababababababababababababababababababababababab (SHA256SUMS.txt line 1): DIFFERS
+      received 0877f6d9978ab9f87ff4d2b010dba9292b4916e372c0cf8a8fb4632d52bdf56e, 182 bytes, from <WEB>/o/app/releases/download/v3.0.0/app-3.0.0.zip
+    Likely causes: a corrupt or truncated download, a caching proxy or CDN, a publisher who did not regenerate the checksum file, or tampering. Nothing was installed.
+<TIME> error apply.abort app 3.0.0 failed: app: app-3.0.0.zip does not match what it was checked against.
+      expected abababababababababababababababababababababababababababababababab (SHA256SUMS.txt line 1): DIFFERS
+      received 0877f6d9978ab9f87ff4d2b010dba9292b4916e372c0cf8a8fb4632d52bdf56e, 182 bytes, from <WEB>/o/app/releases/download/v3.0.0/app-3.0.0.zip
+    Likely causes: a corrupt or truncated download, a caching proxy or CDN, a publisher who did not regenerate the checksum file, or tampering. Nothing was installed.
+    The download is kept, never unpacked, in <HOME>/state/quarantine/app for inspection. If you have checked the hash received elsewhere (the release page, a second download, the author), install it with `gremloader install app@3.0.0 --accept-sha256 0877f6d9978ab9f87ff4d2b010dba9292b4916e372c0cf8a8fb4632d52bdf56e`.
+--- stderr

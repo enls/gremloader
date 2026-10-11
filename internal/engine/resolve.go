@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -192,7 +193,15 @@ func resolve(in resolveIn) decision {
 			}
 			return d
 		case !in.AllowDowngrade:
-			d.Result, d.Reason = ResultSkipped, fmt.Sprintf("%s %s is older than installed %s; a downgrade needs --allow-downgrade", source, chosen.Version, *installed)
+			msg := fmt.Sprintf("%s %s is older than installed %s; a downgrade needs --allow-downgrade", source, chosen.Version, *installed)
+			if in.Want != "" {
+				// Asked for on the command line: not doing it is a failure (exit 1), so a script
+				// does not read "skipped" as success. A pin is configuration and stays skipped:
+				// otherwise every scheduled run would fail until it was changed.
+				d.Result, d.Err = ResultFailed, errors.New(msg)
+				return d
+			}
+			d.Result, d.Reason = ResultSkipped, msg
 			return d
 		default:
 			d.Action = ActDowngrade

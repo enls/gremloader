@@ -1,0 +1,5 @@
+$ gremloader rollback app --yes
+exit 0
+--- stdout
+app  2.0.0 -> 1.0.0  rolled-back
+--- stderr

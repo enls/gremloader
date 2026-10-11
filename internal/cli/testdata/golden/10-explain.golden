@@ -1,0 +1,28 @@
+$ gremloader explain app
+exit 0
+--- stdout
+app (from <HOME>/config/gremloader.toml)
+  source                = "github-release"     # default
+  repo                  = "o/app"              # gremloader.toml:4 [package.app]
+  tag_prefix            = "v"                  # default
+  channel               = "stable"             # default
+  api                   = "auto"               # default
+  asset                 = "app-{version}.zip"  # gremloader.toml:5 [package.app]
+  checksums             = "SHA256SUMS.txt"     # gremloader.toml:6 [package.app]
+  verify.require        = ["checksum"]         # default
+  verify.attestation    = "if-present"         # default
+  dir                   = "{root}/App"         # gremloader.toml:7 [package.app]
+  shared_dir            = false                # default
+  strip                 = "auto"               # default
+  platforms             = []                   # default
+  pin                   = ""                   # default
+  hold                  = false                # default
+  cooldown_days         = 0                    # default
+  cooldown_unknown      = "deny"               # default
+  limits.max_download   = 4294967296           # default
+  limits.max_extracted  = 4294967296           # default
+  limits.max_files      = 20000                # default
+  enabled               = true                 # default
+  hook_fail             = "warn"               # default
+  hook_timeout          = 2m0s                 # default
+--- stderr

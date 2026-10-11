@@ -114,6 +114,12 @@ func TestResolve(t *testing.T) {
 			result: ResultFailed, wantErr: "pinned version 0.9.0 is not among"},
 		{name: "explicit beats pin", in: resolveIn{Releases: std, Installed: "0.5.0", Pin: "0.6.0", Want: "0.6.1"},
 			want: "0.6.1", action: ActUpdate},
+		// A version asked for on the command line and refused is a failure (exit 1), so a script
+		// does not take "skipped" for success (decided with the user 2026-10-11). A pin is
+		// configuration: a pin below the installed version stays "skipped", or every scheduled run
+		// would fail until someone unpinned.
+		{name: "requested below installed needs the flag", in: resolveIn{Releases: std, Installed: "0.6.1", Want: "0.5.0"},
+			result: ResultFailed, wantErr: "--allow-downgrade"},
 		{name: "pin below installed is not a silent downgrade", in: resolveIn{Releases: std, Installed: "0.6.1", Pin: "0.5.0"},
 			result: ResultSkipped, reasonHas: "--allow-downgrade"},
 		{name: "downgrade when allowed", in: resolveIn{Releases: std, Installed: "0.6.1", Want: "0.5.0", AllowDowngrade: true},

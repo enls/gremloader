@@ -217,6 +217,55 @@ func TestRemoveAdoptedNeedsDeleteDir(t *testing.T) {
 	}
 }
 
+// A folder that existed before GremLoader (adopted, then updated: the CraftWerk path) is never
+// claimed, but once remove has emptied it, it goes too (user, 2026-10-11). One with the user's
+// files in it stays.
+func TestRemoveDeletesTheInstallFolderItEmptied(t *testing.T) {
+	for _, userFile := range []bool{false, true} {
+		r := newRig(t, appFile)
+		write(t, filepath.Join(r.dir(), "app.exe"), "app v1")
+		if userFile {
+			write(t, filepath.Join(r.dir(), "user.cfg"), "mine")
+		}
+		if it := r.engine().Adopt(context.Background(), "app", AdoptOptions{Version: "1.0.0"}); it.Result != ResultAdopted {
+			t.Fatalf("adopt = %+v (%v)", it, it.Err)
+		}
+		r.publish("app", "2.0.0", 20, archives.X("app.exe", "app v2"))
+		if it := item(t, r.apply(r.engine(), Request{}), "app"); it.Result != ResultUpdated {
+			t.Fatalf("update = %+v (%v)", it, it.Err)
+		}
+		if it := r.engine().Remove(context.Background(), "app", RemoveOptions{}); it.Result != ResultRemoved {
+			t.Fatalf("remove = %+v (%v)", it, it.Err)
+		}
+		_, err := os.Stat(r.dir())
+		if userFile {
+			assertTree(t, r.dir(), map[string]string{"user.cfg": "mine"})
+		} else if err == nil {
+			t.Error("the emptied install folder is still there")
+		}
+	}
+}
+
+// Both remove hooks see the same thing: VERSION is the version removed, PREVIOUS is empty (nothing
+// came before a remove), and {tag} is the removed version's tag (user, 2026-10-11).
+func TestRemoveHooksGetTheRemovedVersion(t *testing.T) {
+	r := newRig(t, appFile+"pre_remove = [[\"stop\", \"{tag}\"]]\npost_remove = [[\"unregister\", \"{tag}\"]]\n")
+	r.publish("app", "1.0.0", 30, v1Files...)
+	r.apply(r.engine(), Request{InstallMissing: true})
+	if it := r.engine().Remove(context.Background(), "app", RemoveOptions{}); it.Result != ResultRemoved {
+		t.Fatalf("remove = %+v (%v)", it, it.Err)
+	}
+	if len(r.hooks.ran) != 2 {
+		t.Fatalf("hooks = %+v", r.hooks.ran)
+	}
+	for i, want := range []string{"stop v1.0.0", "unregister v1.0.0"} {
+		h := r.hooks.ran[i]
+		if h.Action != "remove" || h.Version != "1.0.0" || h.Previous != "" || strings.Join(h.Commands[0], " ") != want {
+			t.Errorf("hook %d = %+v, want %q", i, h, want)
+		}
+	}
+}
+
 func TestFailingPreRemoveHookRemovesNothing(t *testing.T) {
 	r := newRig(t, appFile+"pre_remove = [[\"stop-service\"]]\n")
 	r.publish("app", "1.0.0", 30, v1Files...)
@@ -427,7 +476,7 @@ func sweep(t *testing.T, setup func(*testing.T) *rig, op func(*Engine) (*Item, e
 			if crash != (err != nil) {
 				t.Fatalf("crash=%v at %d (%s): err %v", crash, k, where, err)
 			}
-			for _, ri := range r.engine().Repair() {
+			for _, ri := range r.engine().Repair(context.Background()) {
 				if ri.Result != ResultRepaired {
 					t.Errorf("crash=%v at %d (%s): repair %+v", crash, k, where, ri)
 				}

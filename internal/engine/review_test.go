@@ -42,7 +42,7 @@ func TestFailedUndoAfterTheStateStepIsNotFinishedForward(t *testing.T) {
 	if it := item(t, p, "app"); it.Result != ResultNeedsRepair {
 		t.Fatalf("item = %+v", it)
 	}
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultRepaired {
 			t.Errorf("repair = %+v", ri)
 		}
@@ -82,7 +82,7 @@ func TestUnrecordedAbortIsFinishedForwardByRepair(t *testing.T) {
 	if undos != 0 {
 		t.Errorf("%d undo steps ran although the abort was not recorded", undos)
 	}
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultRepaired {
 			t.Errorf("repair = %+v", ri)
 		}
@@ -193,7 +193,7 @@ func TestJournalThatNeverBegan(t *testing.T) {
 					}
 				}
 				if viaRepair {
-					for _, ri := range r.engine().Repair() {
+					for _, ri := range r.engine().Repair(context.Background()) {
 						if ri.Result != ResultRepaired {
 							t.Errorf("repair = %+v (%v)", ri, ri.Err)
 						}
@@ -233,7 +233,7 @@ func TestRepairWithTheInstallFolderAway(t *testing.T) {
 	if err := os.Rename(r.dir(), away); err != nil {
 		t.Fatal(err)
 	}
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultNeedsRepair {
 			t.Errorf("repair without the folder = %+v (%v)", ri, ri.Err)
 		}
@@ -241,7 +241,7 @@ func TestRepairWithTheInstallFolderAway(t *testing.T) {
 	if err := os.Rename(away, r.dir()); err != nil {
 		t.Fatal(err)
 	}
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultRepaired {
 			t.Errorf("repair = %+v (%v)", ri, ri.Err)
 		}
@@ -363,7 +363,7 @@ func TestRepairChecksTheJournalsStateRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultNeedsRepair {
 			t.Errorf("repair = %+v (%v)", ri, ri.Err)
 		}
@@ -393,7 +393,7 @@ func TestRepairChecksTheJournalsPackage(t *testing.T) {
 	if err := os.Rename(r.paths.Journal("app"), r.paths.Journal("other")); err != nil {
 		t.Fatal(err)
 	}
-	items := r.engine().Repair()
+	items := r.engine().Repair(context.Background())
 	if len(items) != 1 || items[0].Package != "other" || items[0].Result != ResultNeedsRepair {
 		t.Fatalf("repair = %+v", items)
 	}
@@ -474,7 +474,7 @@ func TestRepairChecksTheJournalsFolder(t *testing.T) {
 	}
 	_ = j.Close()
 
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultNeedsRepair {
 			t.Errorf("repair = %+v (%v)", ri, ri.Err)
 		}

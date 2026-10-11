@@ -1,0 +1,6 @@
+$ gremloader install app
+exit 4
+--- stdout
+app  1.0.0  install
+--- stderr
+gremloader install: nothing was changed: there is no terminal to confirm on; run again with --yes to apply this plan

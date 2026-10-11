@@ -1,0 +1,6 @@
+$ gremloader list
+exit 0
+--- stdout
+PACKAGE  INSTALLED  LATEST SEEN  STATUS
+app      2.0.0      2.0.0        up to date
+--- stderr

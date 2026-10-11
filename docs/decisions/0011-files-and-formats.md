@@ -65,6 +65,15 @@ is an error: a typo like `window/amd64` would otherwise never match and never sa
 `platforms` defaults to the keys of the `asset` table; a single asset string names no platforms
 and `lock` must be told.
 
+**`shared_dir`** (added 2026-10-11, decision 2 of the M5 bug check) is `true`/`false` or an OS
+table of those (`shared_dir = { linux = true }`), merged per OS like `dir`, default `false`. It
+marks an install folder that other packages and the user also use, such as `~/.local` for the
+Craft Linux tarballs (`bin/` + `share/`). What it changes is the engine's business (ADR 0012):
+the folder need not be empty for a first install, its top-level folders are never claimed, and it
+is never deleted whole. It is a package-file key only, like `dir`: the local override cannot set
+it. It was preferred over `overlay = true` in a preset and over per-app folders linked into
+`~/.local/bin` (see `decided-against.md`). Adding it did not bump `schema_version` (additive).
+
 **Verification cannot be switched off by omission.** `verify.require` defaults to `["checksum"]`,
 and a package without `checksums` is an error unless `verify.require = []` is written, which
 loads with a warning.
@@ -73,7 +82,13 @@ loads with a warning.
 seconds, so the same content gives the same bytes. Each asset URL must be the stable release
 download URL: a query, fragment or credentials are refused, so a signed, expiring CDN link can
 never be committed. Which hosts may be contacted is decided again at install time by the download
-policy, not by the lock.
+policy, not by the lock. An asset entry may carry `"verified_by": "hash-override"` (added in M6,
+decided with the user 2026-10-11; no release had shipped, so no schema bump): its hash was
+accepted with `--accept-sha256` although the release's checksum file said otherwise, and a
+reviewer of the lock should see that. An override is written only into a lock that already names
+the package at that version; it never adds a package or changes a version. `gremloader lock`
+reads releases through the GitHub API (every platform's asset list and size is only there) and
+takes each hash from the checksum file and GitHub's digest, which must agree.
 
 **State**: a missing `state.json` is an empty state; a damaged one is an error, never an empty
 state (that would make every install folder look like someone else's). A record with

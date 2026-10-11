@@ -373,6 +373,29 @@ func TestPlanNotesDrift(t *testing.T) {
 	}
 }
 
+// `check` (no InstallMissing) on a package that is not installed but whose folder holds files points
+// at adopt, as `plan` does: a CraftWerk user's first command may well be check (user, 2026-10-11).
+func TestCheckPointsAtAdoptForAnExistingFolder(t *testing.T) {
+	r := newRig(t, appFile)
+	r.publish("app", "1.0.0", 30, v1Files...)
+	if it := item(t, r.plan(r.engine(), Request{}), "app"); it.Result != ResultSkipped || len(it.Notes) != 0 {
+		t.Errorf("no folder: item = %+v", it)
+	}
+	if err := os.MkdirAll(r.dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if it := item(t, r.plan(r.engine(), Request{}), "app"); len(it.Notes) != 0 {
+		t.Errorf("empty folder: item = %+v", it)
+	}
+	if err := os.WriteFile(filepath.Join(r.dir(), "app.exe"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	it := item(t, r.plan(r.engine(), Request{}), "app")
+	if it.Result != ResultSkipped || it.Reason != "not installed" || len(it.Notes) != 1 || !strings.Contains(it.Notes[0], "gremloader adopt app") {
+		t.Errorf("folder with files: item = %+v", it)
+	}
+}
+
 func TestPlanDisabledPackageIsSkipped(t *testing.T) {
 	r := newRig(t, appFile+"enabled = false\n")
 	it := item(t, r.plan(r.engine(), Request{InstallMissing: true}), "app")

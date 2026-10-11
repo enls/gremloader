@@ -19,6 +19,7 @@ import (
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/exitcode"
+	"github.com/enls/gremloader/internal/lock"
 	"github.com/enls/gremloader/internal/paths"
 	"github.com/enls/gremloader/internal/peversion"
 	"github.com/enls/gremloader/internal/pkgfile"
@@ -177,6 +178,10 @@ type Item struct {
 	LockSize  int64
 	Overlay   bool // installing into a non-empty folder that GremLoader does not manage (--overlay)
 	CreateDir bool // the install folder's parent is missing and may be created (--create-dir)
+	Shared    bool // the install folder is shared with other packages and the user (shared_dir)
+	// Override is set when --accept-sha256 let a download through: what gremloader.lock should
+	// record for this platform if it names the package at this version (lock.File.Override).
+	Override *lock.Asset
 }
 
 // Plan is what a run will do.
@@ -195,6 +200,9 @@ func (p *Plan) Pending() bool {
 	return false
 }
 
+// reasonDisabled is the reason of a package skipped because the package file disables it.
+const reasonDisabled = "disabled"
+
 // ExitCode is the run's exit code (plan E.4): the worst failure, else 2 when check-style output
 // found something to do (updates), else 0.
 func (p *Plan) ExitCode(updatesAvailable bool) int {
@@ -211,6 +219,8 @@ func (p *Plan) ExitCode(updatesAvailable bool) int {
 			offline = true
 		case it.Result == ResultFailed:
 			codes = append(codes, exitcode.Failed)
+		case it.Result == ResultSkipped && it.Reason == reasonDisabled:
+			// Never looked up: it says nothing about whether GitHub could be reached.
 		default:
 			resolved = true
 		}

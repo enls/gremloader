@@ -137,3 +137,55 @@ func TestDamagedAndNewerLocks(t *testing.T) {
 		}
 	}
 }
+
+func TestOverride(t *testing.T) {
+	win := platform.Platform{OS: "windows", Arch: "amd64"}
+	other := strings.Repeat("ab", 32)
+	accepted := Asset{Asset: "photocraft-0.6.0-windows-x64-portable.zip",
+		URL:    "https://github.com/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-windows-x64-portable.zip",
+		SHA256: other, Size: 75465464}
+
+	f := sample()
+	if !f.Override("photocraft", "0.6.0", win, accepted) {
+		t.Fatal("not recorded")
+	}
+	got := f.Packages["photocraft"].Platforms["windows/amd64"]
+	if got.SHA256 != other || got.Size != 75465464 || got.VerifiedBy != HashOverride {
+		t.Errorf("entry = %+v", got)
+	}
+	if f.Packages["photocraft"].Platforms["linux/amd64"].VerifiedBy != "" {
+		t.Error("another platform was marked")
+	}
+	path := filepath.Join(t.TempDir(), "gremloader.lock")
+	if err := Save(path, f); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Count(string(data), `"verified_by": "hash-override"`) != 1 {
+		t.Errorf("lock file:\n%s", data)
+	}
+	if back, _, err := Load(path); err != nil || back.Packages["photocraft"].Platforms["windows/amd64"].VerifiedBy != HashOverride {
+		t.Errorf("Load = %v", err)
+	}
+
+	for name, call := range map[string]func(f *File) bool{
+		"other version": func(f *File) bool { return f.Override("photocraft", "0.6.1", win, accepted) },
+		"other package": func(f *File) bool { return f.Override("wordcraft", "0.6.0", win, accepted) },
+		"other platform": func(f *File) bool {
+			return f.Override("photocraft", "0.6.0", platform.Platform{OS: "windows", Arch: "arm64"}, accepted)
+		},
+	} {
+		f := sample()
+		if call(f) || f.Packages["photocraft"].Platforms["windows/amd64"].SHA256 != hash {
+			t.Errorf("%s: the lock was changed", name)
+		}
+	}
+}
+
+func TestOnlyHashOverrideIsAMarker(t *testing.T) {
+	f := sample()
+	f.Packages["photocraft"].Platforms["windows/amd64"].VerifiedBy = "checksum"
+	if err := f.Validate(); err == nil {
+		t.Error("verified_by = checksum accepted")
+	}
+}

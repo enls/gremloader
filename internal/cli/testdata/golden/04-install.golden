@@ -1,0 +1,5 @@
+$ gremloader install app --yes
+exit 0
+--- stdout
+app  1.0.0  installed
+--- stderr

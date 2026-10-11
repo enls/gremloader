@@ -1,0 +1,6 @@
+$ gremloader list
+exit 0
+--- stdout
+PACKAGE  INSTALLED  LATEST SEEN  STATUS
+app      -          -            not installed
+--- stderr

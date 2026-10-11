@@ -75,12 +75,25 @@ undone: the files are all in place, so they leave the package for repair, which 
 Repair also clears every staging area, since the run lock guarantees none is in use. Repair does nothing to an
 unfinished journal whose install folder is not there (a drive not connected): undo would have
 called the empty result success and dropped the journal, and recreated the folder on whatever is
-mounted there now (found by the M5 bug check). A folder gone for good needs a way to give the
-journal up (M6). A journal
+mounted there now (found by the M5 bug check). For a folder gone for good, or a journal that
+cannot be read, `gremloader repair --forget <pkg>` gives the change up (M6, decision 5): it deletes
+the journal and staging, and records the package as not installed when its folder is not there;
+when the folder is there the record stays, and the folder may hold files of both versions. A journal
+that had committed is not given up: `--forget` finishes its bookkeeping as repair does, since
+deleting it would lose the only rollback record (found by the M6+M7 bug check). A journal
 that never got a complete begin record (no log, or no complete line: `journal.Begun`) changed
 nothing and is simply removed, by repair or by the next run's preflight; before the M5 bug check
 it blocked the package as "damaged, needs a look by hand", or made every later run fail on the
 leftover directory.
+
+**Hooks and repair** (decision 4 of the M5 bug check, built in M6). A change that repair finishes
+forward never ran its post hook: the run died between its files and its hook. Repair runs it, as
+the action that was interrupted (`GREMLOADER_ACTION` = install, update, rollback, remove...):
+`post_install` for an install, `post_remove` for a remove, `post_update` for everything else, under
+the package's `hook_fail` rule. An undone change runs no hook (it did not happen), nor does a
+package no longer in the package file. A change whose `commit` record was written gets no hook
+from repair: nothing may follow `commit` in the journal, so whether its hook ran before the crash
+cannot be known. **Hooks should therefore tolerate a rare double run and a rare miss.**
 
 **Commit, then promote.** After the last operation: `step state`, the manifest, `state.json`, the
 `commit` record. Then the journal becomes the package's rollback record (`previous/<pkg>/`; the
@@ -88,7 +101,18 @@ older one is moved aside first and deleted after, so a crash in between leaves s
 `tidy` finishes). A same-version reinstall keeps the existing rollback record and drops its own;
 a first install has nothing to roll back to. An `--overlay` install keeps its journal in
 `previous/<pkg>/` without pointing state at it: it holds the user's files that the install
-replaced, and `state.json`'s rollback record must name a version.
+replaced, and `state.json`'s rollback record must name a version. The next update replaces it
+and a remove deletes it, so those files are kept only until then: decided with the user (decision 1
+of the M5 bug check) to warn rather than keep a separate store. The install's plan says so, and a
+remove that deletes such a record names it.
+
+**Long paths on Windows** (decision 3 of the M5 bug check: warn, never refuse). GremLoader copes
+with paths over MAX_PATH (Go uses the long-path form), but many programs and hook scripts do not.
+After unpacking, an item gets a note (and an `apply.step` event, step `long-path`) when a file's
+full path is over 259 UTF-16 units or a folder's over 247 (MAX_PATH is 260 including the
+terminating NUL; a folder must leave room for an 8.3 name). `plan` gives the same note for an
+update from the installed version's file list, the best guess before the download. Other OSes:
+no check.
 
 **The journal starts after staging**, not at the end of the preflight as plan E.3.2 says:
 downloading, verifying and unpacking never touch the install folder, so a failure there only has
@@ -110,7 +134,9 @@ forward. `post_update` runs with `GREMLOADER_ACTION=rollback`.
 
 **Remove** runs `pre_remove` (its failure stops the remove before anything is deleted), deletes the
 manifest's files and the folders GremLoader made once empty, then `post_remove`, and forgets the
-rollback record, manifests and rejections. An adopted package without a file list is refused
+rollback record, manifests and rejections. The install folder itself goes too once it is empty,
+even when it was there before GremLoader (adopted, or installed into), except a shared folder
+(decided with the user after the M6+M7 bug check: an emptied folder left behind is clutter). An adopted package without a file list is refused
 unless `--delete-dir`, which renames the folder aside and deletes it whole.
 
 **Adopt** records an existing folder without touching a file: `--version` is trusted;
@@ -133,10 +159,35 @@ is logged with code `hash-override` and recorded as `verified_by = ["hash-overri
 file cannot carry one. `--locked` mismatches need it too. Writing it into the lock is M6.
 
 **Preflight** (nothing is written until all pass): an unfinished journal, a running program whose
-executable lies in the install folder (`proc`, by path, not name; result `skipped`, not a failure:
+executable lies in the install folder (in a shared folder: one of the package's own files, see
+below) (`proc`, by path, not name; result `skipped`, not a failure:
 an open app is normal for a scheduled run), and free space when the asset size is known (three
 times the download plus 64 MiB; the real guarantee is that running out at any later point cleans
 up).
+
+**Shared folders** (`shared_dir`, ADR 0011; decision 2 of the M5 bug check, built in M7). A
+folder such as `~/.local`, where several packages and the user keep files:
+
+- a first install does not need it empty (no `--overlay`); files it replaces are backed up as for
+  `--overlay`, and that record is kept, and announced on remove, the same way;
+- its top-level folders (`bin`, `share`) are never in a manifest, so no remove takes them away,
+  even when the package's install created them (CraftWerk never removed its prefix's own);
+- `remove --delete-dir` is refused, and so is a remove of a record without a file list;
+  `adopt` there needs `--verify` (otherwise the package could never be removed);
+- only a program started from one of the package's own files (installed version, rollback target,
+  and for an update the new version's) holds up a change: one app running from `~/.local/bin`
+  does not stop the other eleven. For an update that check moves after staging, where the new
+  file list is known;
+- the record says `shared_dir: true` in `state.json`, so remove and rollback treat the folder as
+  shared even if the package file changes; a package once installed shared stays shared.
+
+**No two packages own a file** (decided with the user while planning M7). Before an install,
+update or rollback touches anything, the files it would place are compared (ignoring case, as the
+executor does) with the file lists of every other package installed in the same folder; a match
+fails the item with the paths and the owner, and nothing changes. Otherwise removing either
+package would delete the other's file. It applies to any folder two packages share, not only
+`shared_dir` ones (two packages can share one through `--overlay`). A package recorded without a
+file list cannot be compared and is not.
 
 **Parked decisions from the bug checks (plan E.9), decided with the user 2026-10-10:**
 
