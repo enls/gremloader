@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +47,8 @@ type rig struct {
 	running []proc.Process
 	hooks   *fakeHooks
 	token   string
+	free    func(string) (uint64, error) // nil: plenty
+	wrap    func(Fetcher) Fetcher        // nil: the real download client
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -82,32 +86,48 @@ func (r *rig) writeFile(content string) {
 // engine builds an engine over the rig, as a fresh process would: everything is read from disk.
 func (r *rig) engine() *Engine {
 	r.t.Helper()
+	return r.engineAt(r.srv.APIBase(), r.srv.WebBase())
+}
+
+// engineAt builds the engine against a fake GitHub at the given bases (a child process uses its
+// parent's).
+func (r *rig) engineAt(apiBase, webBase string) *Engine {
+	r.t.Helper()
 	cfg, err := pkgfile.Load(r.file, pkgfile.Options{Vars: map[string]string{"root": r.root}})
 	if err != nil {
 		r.t.Fatalf("package file: %v", err)
 	}
-	api, _ := url.Parse(r.srv.APIBase())
+	api, _ := url.Parse(apiBase)
 	client := download.New(download.Config{
 		Policy: download.Policy{Hosts: []string{"127.0.0.1"}, TokenHosts: []string{api.Host}, AllowHTTP: true},
 		Token:  r.token,
 		Sleep:  func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
 		Jitter: func(time.Duration) time.Duration { return 0 },
 	})
+	free := r.free
+	if free == nil {
+		free = func(string) (uint64, error) { return 1 << 50, nil }
+	}
+	var fetcher Fetcher = client
+	if r.wrap != nil {
+		fetcher = r.wrap(client)
+	}
 	log, err := events.Open(r.paths.EventsLog(), events.WithClock(r.clock))
 	if err != nil {
 		r.t.Fatal(err)
 	}
 	r.t.Cleanup(func() { _ = log.Close() })
 	e, err := New(Config{
-		Paths:    r.paths,
-		Packages: cfg,
-		Source:   github.New(client, github.Options{APIBase: r.srv.APIBase(), WebBase: r.srv.WebBase()}),
-		Fetcher:  client,
-		Events:   log,
-		Hooks:    r.hooks,
-		Clock:    r.clock,
-		Home:     filepath.Join(r.root, "home"),
-		Running:  func(dir string) ([]proc.Process, error) { return r.running, nil },
+		Paths:     r.paths,
+		Packages:  cfg,
+		Source:    github.New(client, github.Options{APIBase: apiBase, WebBase: webBase}),
+		Fetcher:   fetcher,
+		FreeSpace: free,
+		Events:    log,
+		Hooks:     r.hooks,
+		Clock:     r.clock,
+		Home:      filepath.Join(r.root, "home"),
+		Running:   func(dir string) ([]proc.Process, error) { return r.running, nil },
 	})
 	if err != nil {
 		r.t.Fatal(err)
@@ -217,4 +237,54 @@ func (r *rig) events() []events.Event {
 		r.t.Fatal(err)
 	}
 	return evs
+}
+
+// tree lists every file under dir with its content, "/"-separated, for exact comparisons.
+func tree(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if rel != "." {
+				out[rel+"/"] = ""
+			}
+			return nil
+		}
+		b, err := os.ReadFile(p) //nolint:gosec // test
+		out[rel] = string(b)
+		return err
+	})
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func show(m map[string]string) string {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "  %s = %q\n", k, m[k])
+	}
+	return b.String()
+}
+
+// fakeRelease is a release with one zip asset and a checksum file with the given content ("" for
+// none).
+func fakeRelease(tag, assetName string, zip []byte, sums string, published time.Time) fakerelease.Release {
+	rel := fakerelease.Release{Tag: tag, PublishedAt: published, Assets: []fakerelease.Asset{{Name: assetName, Data: zip}}}
+	if sums == "" {
+		sums = sha(zip) + "  " + assetName + "\n"
+	}
+	rel.Assets = append(rel.Assets, fakerelease.Asset{Name: "SHA256SUMS.txt", Data: []byte(sums)})
+	return rel
 }

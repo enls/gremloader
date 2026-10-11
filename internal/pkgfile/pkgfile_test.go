@@ -184,6 +184,21 @@ verify = { requires = ["checksum"] }
 	}
 }
 
+// A hash override is accepted only on the command line, for one package and version at a time
+// (plan E.3.4): a package file, local or not, can never carry one.
+func TestHashOverrideCannotComeFromAFile(t *testing.T) {
+	for _, place := range []string{"[settings]\naccept_sha256 = \"" + strings.Repeat("ab", 32) + "\"\n",
+		"[package.photocraft]\nrepo = \"storytold/photocraft\"\naccept_sha256 = \"" + strings.Repeat("ab", 32) + "\"\n",
+		"[package.photocraft]\nrepo = \"storytold/photocraft\"\nverify = { accept_sha256 = \"x\" }\n"} {
+		if _, err := load(t, "schema_version = 1\n"+place, "", Options{}); err == nil || !strings.Contains(err.Error(), "accept_sha256") {
+			t.Errorf("accepted:\n%s\nerr = %v", place, err)
+		}
+	}
+	if _, err := load(t, craftFile, "[package.photocraft]\naccept_sha256 = \"x\"\n", Options{}); err == nil {
+		t.Error("the local override accepted a hash override")
+	}
+}
+
 func TestSyntaxErrorHasPosition(t *testing.T) {
 	_, err := load(t, "schema_version = 1\n[package.x]\nrepo = \"a/b\n", "", Options{})
 	ps := problems(t, err)

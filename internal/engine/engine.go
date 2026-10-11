@@ -67,12 +67,15 @@ type Config struct {
 	Home     string // the user's home, for "~" in dir templates
 	// Running lists the processes started from a directory; default proc.Under.
 	Running func(dir string) ([]proc.Process, error)
+	// FreeSpace is the space available on the volume holding a path; default: asked of the system.
+	FreeSpace func(path string) (uint64, error)
 }
 
 // Engine is a loaded state plus the means to change it.
 type Engine struct {
-	cfg Config
-	st  *state.State
+	cfg   Config
+	st    *state.State
+	fault func(point string) error // tests: fail or "crash" at a named point
 }
 
 // New loads state.json. A damaged state file is an error, never an empty state (state.Load).
@@ -88,6 +91,9 @@ func New(cfg Config) (*Engine, error) {
 	}
 	if cfg.Running == nil {
 		cfg.Running = proc.Under
+	}
+	if cfg.FreeSpace == nil {
+		cfg.FreeSpace = freeBytes
 	}
 	st, err := state.Load(cfg.Paths.StateFile())
 	if err != nil {
@@ -109,6 +115,18 @@ func (e *Engine) emit(ev events.Event) {
 		_ = e.cfg.Events.Emit(ev)
 	}
 }
+
+// at is a fault-injection point. Production code has no fault function.
+func (e *Engine) at(point string) error {
+	if e.fault == nil {
+		return nil
+	}
+	return e.fault(point)
+}
+
+// errCrash simulates the process dying: the engine returns at once, undoing nothing, as if the
+// power had gone. Only tests produce it.
+var errCrash = errors.New("simulated crash")
 
 // VerifyError means a download did not match what it was checked against, or a required check
 // could not be made (exit 5). Nothing was installed.
