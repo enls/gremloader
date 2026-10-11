@@ -32,9 +32,12 @@ operation is recorded by a write-ahead rule:
   had one): undo does not need it, finishing forward goes by the `state` step, and leaving it out
   halves the flushes per file.
 
-**Saving the old file costs nothing on one volume.** The backup is a hard link
+**Saving the old file copies nothing on one volume.** The backup is a hard link
 (`journal/<pkg>/b/NNNN`), and the new file then *replaces* the old name with a rename, so the old
-bytes are never touched. Across volumes it is a flushed copy, and a new file is copied to a
+bytes are never written. They are read once: the backup's hash goes into its journal record, so
+undo can recognise a file already moved back and rollback can refuse a damaged backup (a 150 MB
+program costs one sequential read per update; corrected by the M5 bug check, which first said
+"costs nothing"). Across volumes it is a flushed copy, and a new file is copied to a
 temporary name beside the target and renamed over it, so the replace is still one step (P3-20).
 A file that another program holds open for a moment (antivirus, Explorer's preview) is retried five
 times over about three seconds (P3-13).

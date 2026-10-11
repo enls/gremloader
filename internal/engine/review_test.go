@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -81,4 +83,26 @@ func TestUnrecordedAbortIsFinishedForwardByRepair(t *testing.T) {
 	if got, v := tree(t, r.dir()), r.state().Packages["app"].Version; !maps.Equal(got, v2Tree) || v != "2.0.0" {
 		t.Fatalf("state says %s and the folder holds:\n%s", v, show(got))
 	}
+}
+
+// Bug check of M5, from suspicion 6: a read-only installed file (set by the user or by whatever
+// installed an adopted folder; extraction never makes one). Windows refuses to replace or delete
+// it. The update may fail, but it must leave exactly the old version and not need repair.
+func TestReadOnlyInstalledFile(t *testing.T) {
+	r := atV1(t)
+	app := filepath.Join(r.dir(), "app.exe")
+	if err := os.Chmod(app, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(app, 0o644) })
+	it := item(t, r.apply(r.engine(), Request{}), "app")
+	got, v := tree(t, r.dir()), r.state().Packages["app"].Version
+	switch {
+	case it.Result == ResultUpdated && maps.Equal(got, v2Tree) && v == "2.0.0":
+	case it.Result == ResultFailed && maps.Equal(got, v1Tree) && v == "1.0.0":
+	default:
+		t.Fatalf("result %s (%v); state says %s and the folder holds:\n%s", it.Result, it.Err, v, show(got))
+	}
+	t.Logf("result %s: %v", it.Result, it.Err)
+	r.assertClean()
 }
