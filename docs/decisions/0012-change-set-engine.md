@@ -57,11 +57,15 @@ not yet tidied is *not* a reason to stop: its bookkeeping is finished automatica
 
 **Repair** finishes forward when the journal reached its `state` step (every file was in place;
 the manifest and the state record to write are in the journal, so no network is needed), and
-undoes otherwise. A change that fails *after* its `state` step (writing the manifest or
-`state.json`) writes an `abort` record before it undoes in-process, so if that undo is itself
-interrupted, repair undoes again rather than finishing forward over a half-undone folder. If the
-`abort` record cannot be written, nothing is undone and the package is left for repair, which then
-finishes forward from intact files (found by the M5 bug check, 2026-10-10). It also clears every staging area, since the run lock guarantees none is in use.
+undoes otherwise, so the forward rule needs "and not `abort`": every in-process undo first writes
+an `abort` record, and if that undo is itself interrupted, repair undoes again rather than
+finishing forward over a half-undone folder. (Without it, a `step state` record that reached the
+disk but whose flush reported an error, followed by an undo that failed part-way, left state.json
+naming the new version over a mostly old folder; found by the M5 bug check, 2026-10-11.) If the
+`abort` record cannot be written, nothing is undone and repair later finishes forward, or undoes
+when there was no `step state`. Failures while writing the manifest or `state.json` are never
+undone: the files are all in place, so they leave the package for repair, which finishes forward.
+Repair also clears every staging area, since the run lock guarantees none is in use.
 
 **Commit, then promote.** After the last operation: `step state`, the manifest, `state.json`, the
 `commit` record. Then the journal becomes the package's rollback record (`previous/<pkg>/`; the
