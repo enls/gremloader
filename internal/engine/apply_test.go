@@ -311,6 +311,19 @@ func TestHookFailure(t *testing.T) {
 	}
 }
 
+// A failed post_update hook under hook_fail = "fail" says what was done: updated, not installed.
+func TestFailedPostUpdateHookSaysUpdated(t *testing.T) {
+	r := newRig(t, appFile+"post_update = [[\"x\"]]\nhook_fail = \"fail\"\n")
+	r.publish("app", "1.0.0", 30, v1Files...)
+	item(t, r.apply(r.engine(), Request{InstallMissing: true}), "app")
+	r.publish("app", "2.0.0", 20, v2Files...)
+	r.hooks.fail = map[string]error{"post_update": errors.New("exit status 3")}
+	it := item(t, r.apply(r.engine(), Request{}), "app")
+	if it.Result != ResultFailed || !strings.Contains(it.Err.Error(), "updated, but the post_update hook failed") {
+		t.Errorf("item = %+v (%v)", it, it.Err)
+	}
+}
+
 // ---- failures and crashes at every step ----
 
 // countPoints runs an update with a fault function that only counts, and returns how many
