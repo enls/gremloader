@@ -45,7 +45,11 @@ times over about three seconds (P3-13).
 **Order of an update:** new folders (parents first), every new file, the old files the new version
 no longer has (only when the old manifest is known: an adopted install keeps its unknown files),
 then old folders that became empty (deepest first). A folder is GremLoader's to remove only if it
-created it; the manifest lists those, and the user's own files in it keep it.
+created it; the manifest lists those, and the user's own files in it keep it. An old path is not
+removed when it is the same file or folder (`os.SameFile`) as one the change just put in place
+under a name differing only in case: on NTFS, v1's `Readme.txt` *is* v2's `README.txt`, and
+removing the old name deleted the new file while the update reported success (found by the M5
+bug check, 2026-10-11). On a case-sensitive file system they are two files and the old one goes.
 
 **Failure before the commit undoes the journal**, in reverse: created paths removed, saved files
 renamed back, folders removed (if empty) or recreated. Undo is idempotent, so it can be run again
