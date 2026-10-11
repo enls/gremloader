@@ -182,3 +182,27 @@ func readString(t *testing.T, p string) string {
 	}
 	return string(b)
 }
+
+// The same bytes with another mode (the new version changed only the permissions) are not the
+// saved file: restore puts the backup back.
+func TestRestoreMindsTheMode(t *testing.T) {
+	d := t.TempDir()
+	dst, backup := filepath.Join(d, "tool"), filepath.Join(d, "backup")
+	write(t, dst, "same")
+	write(t, backup, "same")
+	if err := os.Chmod(backup, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	sum, _, _ := hashFile(dst)
+	if err := restore(backup, dst, sum); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm()&0o200 != 0 || fileExists(backup) {
+		t.Errorf("mode %v, backup left %v", fi.Mode(), fileExists(backup))
+	}
+	_ = os.Chmod(dst, 0o644) // let the temporary folder be removed on Windows
+}
