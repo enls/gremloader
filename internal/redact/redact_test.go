@@ -61,6 +61,28 @@ func FuzzURL(f *testing.F) {
 	})
 }
 
+// Credentials are not always written as scheme://user:password@host. Each of these leaked: the
+// first parses with the user name as the scheme, the second has no scheme, the third no slashes
+// at all, and the fourth has a raw "/" in the password, which ends the authority early.
+func TestCredentialsWithoutSchemeSlashSlashAreRedacted(t *testing.T) {
+	for _, in := range []string{
+		"user:hunter2@host.example/x",
+		"//user:hunter2@host.example/x?sig=1",
+		"https:user:hunter2@host.example",
+		"https://user:hun/ter2@host.example/x",
+	} {
+		got := URL(in)
+		for _, secret := range []string{"hunter2", "hun/ter2", "user", "sig="} {
+			if strings.Contains(got, secret) {
+				t.Errorf("URL(%q) = %q still contains %q", in, got, secret)
+			}
+		}
+		if !strings.Contains(got, "host.example") {
+			t.Errorf("URL(%q) = %q lost the host", in, got)
+		}
+	}
+}
+
 // A URL that does not parse still must not give its credentials away: the fallback used to cut
 // only the query string and returned the userinfo untouched.
 func TestUnparsableURLStillLosesItsCredentials(t *testing.T) {
