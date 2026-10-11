@@ -15,6 +15,7 @@ import (
 
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
+	"github.com/enls/gremloader/internal/platform"
 	"github.com/enls/gremloader/internal/proc"
 	"github.com/enls/gremloader/internal/state"
 	"github.com/enls/gremloader/internal/testutil/archives"
@@ -34,16 +35,17 @@ dir       = "{root}/App"
 // rig runs the whole command line in-process against a fake GitHub, with GREMLOADER_HOME and the
 // install root in temporary folders and the package file in the config folder.
 type rig struct {
-	t       *testing.T
-	srv     *fakerelease.Server
-	clock   *clock.Fake
-	home    string
-	root    string
-	cwd     string
-	env     map[string]string
-	running []proc.Process
-	stdin   string // what the user types
-	tty     bool   // stdin is a terminal
+	t        *testing.T
+	srv      *fakerelease.Server
+	clock    *clock.Fake
+	home     string
+	root     string
+	cwd      string
+	env      map[string]string
+	running  []proc.Process
+	stdin    string            // what the user types
+	tty      bool              // stdin is a terminal
+	platform platform.Platform // zero: this machine
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -94,6 +96,7 @@ func (r *rig) deps() deps {
 		sleep:     func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
 		running:   func(string) ([]proc.Process, error) { return r.running, nil },
 		freeSpace: func(string) (uint64, error) { return 1 << 50, nil },
+		platform:  r.platform,
 	}
 }
 

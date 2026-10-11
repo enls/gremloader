@@ -13,7 +13,6 @@ import (
 	"github.com/enls/gremloader/internal/engine"
 	"github.com/enls/gremloader/internal/exitcode"
 	"github.com/enls/gremloader/internal/lock"
-	"github.com/enls/gremloader/internal/platform"
 	"github.com/enls/gremloader/internal/ver"
 	"github.com/enls/gremloader/internal/version"
 )
@@ -237,7 +236,7 @@ func (c *call) recordInLock(ctx context.Context, s *session, p *engine.Plan, upd
 		if it.Override == nil || !found {
 			continue
 		}
-		if f.Override(it.Package, it.To, platform.Current(), *it.Override) {
+		if f.Override(it.Package, it.To, c.platform(), *it.Override) {
 			it.Notes = append(it.Notes, fmt.Sprintf("%s records the accepted hash, marked verified_by = %q", filepath.Base(path), lock.HashOverride))
 			dirty = true
 		} else {

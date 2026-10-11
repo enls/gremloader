@@ -15,6 +15,7 @@ import (
 	"github.com/enls/gremloader/internal/hooks"
 	"github.com/enls/gremloader/internal/paths"
 	"github.com/enls/gremloader/internal/pkgfile"
+	"github.com/enls/gremloader/internal/platform"
 	"github.com/enls/gremloader/internal/proc"
 	"github.com/enls/gremloader/internal/runlock"
 	"github.com/enls/gremloader/internal/source/github"
@@ -27,7 +28,10 @@ type deps struct {
 	getenv func(string) string
 	cwd    func() (string, error)
 	home   string // the user's home folder ("~" in package files)
-	clock  clock.Clock
+	// platform is the machine packages are installed for; zero = this one. Tests set it to run the
+	// Linux layout on Windows and the other way round.
+	platform platform.Platform
+	clock    clock.Clock
 	// ctx ends the run early (an interrupt); nil = never.
 	ctx context.Context
 	// stdinTTY: can a prompt be answered on stdin? Without it, changes need --yes.
@@ -163,6 +167,7 @@ func (c *call) open(w *world) (*session, int) {
 		Events:     log,
 		Hooks:      runner,
 		Clock:      c.d.clock,
+		Platform:   c.d.platform,
 		Home:       c.d.home,
 		Running:    c.d.running,
 		FreeSpace:  c.d.freeSpace,
@@ -182,4 +187,12 @@ func (c *call) ctx() context.Context {
 		return context.Background()
 	}
 	return c.d.ctx
+}
+
+// platform is the machine packages are installed for.
+func (c *call) platform() platform.Platform {
+	if c.d.platform == (platform.Platform{}) {
+		return platform.Current()
+	}
+	return c.d.platform
 }
