@@ -48,7 +48,10 @@ failures before any package result: `{"schema_version": 1, "command", "exit_code
 "warnings", "error"}`. Fields are only ever added; a removal or a change of meaning bumps
 `schema_version`. Prompts and messages go to stderr. `log --json` items are the events
 themselves. `version --json` keeps printing the build-information object (unchanged since
-Phase 0).
+Phase 0). Two documented exceptions print no object: `help --json` (and `-h --json`, which is
+rewritten to `help`) prints the plain help text, since help is read by a person; and a second
+interrupt quits at once with nothing on stdout, since an object written while quitting could
+land in the middle of a half-written one.
 
 **The run lock** is taken by every command that builds the engine, including `check`, `plan` and
 `verify` (a plan writes `state.json`; M5 bug check). `list`, `explain`, `log`, `pin`/`hold` and
