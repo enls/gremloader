@@ -207,20 +207,12 @@ func (e *Engine) change(ctx context.Context, it *Item, result *state.Package, m 
 		err = x.append(journal.Record{Op: journal.OpStep, Name: "state"})
 	}
 	if err != nil {
-		_ = j.Close()
-		if errors.Is(err, errCrash) {
-			return err
-		}
-		return e.rollbackChange(it.Package, err)
+		return e.abortChange(it.Package, j, err)
 	}
 
 	// 7. Record: from here on the change is complete, and an interruption finishes forward.
 	if err := e.at("record"); err != nil {
-		_ = j.Close()
-		if errors.Is(err, errCrash) {
-			return err
-		}
-		return e.rollbackChange(it.Package, err)
+		return e.abortChange(it.Package, j, err)
 	}
 	if err := e.commit(it.Package, j, result, m); err != nil {
 		return err
@@ -264,6 +256,30 @@ func (e *Engine) commit(name string, j *journal.Journal, result *state.Package, 
 	}
 	e.pruneManifests(name)
 	return nil
+}
+
+// abortChange gives up a change that failed: it records the abort, then undoes the journal. The
+// abort record comes first so that if the undo is itself interrupted, repair undoes again instead
+// of finishing forward over a half-restored folder (which a journal past its "state" step would
+// otherwise get). If even the abort cannot be recorded, nothing is undone and repair decides.
+func (e *Engine) abortChange(name string, j *journal.Journal, cause error) error {
+	if errors.Is(cause, errCrash) {
+		_ = j.Close()
+		return cause
+	}
+	err := e.at("abort")
+	if err == nil {
+		err = j.Append(journal.Record{Op: journal.OpAbort})
+	}
+	_ = j.Close()
+	if errors.Is(err, errCrash) {
+		return err
+	}
+	if err != nil {
+		return &RepairError{Package: name, Msg: fmt.Sprintf("%v; giving up could not be recorded (%v), so nothing was undone: "+
+			"run `gremloader repair`", cause, err)}
+	}
+	return e.rollbackChange(name, cause)
 }
 
 // rollbackChange undoes an uncommitted journal after a failure. The cause is returned when the

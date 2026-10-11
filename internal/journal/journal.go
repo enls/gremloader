@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/enls/gremloader/internal/paths"
@@ -43,6 +44,9 @@ const (
 	OpRmdir   = "rmdir"   // empty directory Path was removed
 	OpPlaced  = "placed"  // the new Path is in place
 	OpCommit  = "commit"  // the change is complete; nothing is to be undone
+	// OpAbort is written before a failed change is undone in-process. It decides what repair does
+	// if that undo is itself interrupted: undo again, never finish forward.
+	OpAbort = "abort"
 )
 
 // File names inside a journal directory.
@@ -214,6 +218,11 @@ func (l *Log) Committed() bool {
 	return l.Records[len(l.Records)-1].Op == OpCommit
 }
 
+// Aborted reports whether the change was given up and is being undone.
+func (l *Log) Aborted() bool {
+	return slices.ContainsFunc(l.Records, func(r Record) bool { return r.Op == OpAbort })
+}
+
 // HasStep reports whether the step name was recorded.
 func (l *Log) HasStep(name string) bool {
 	for _, r := range l.Records {
@@ -254,6 +263,7 @@ func Read(dir string) (*Log, error) {
 	}
 
 	l := &Log{Dir: dir}
+	aborted := false
 	rest := data
 	for line := 1; len(rest) > 0; line++ {
 		raw, after, terminated := bytes.Cut(rest, []byte("\n"))
@@ -270,6 +280,10 @@ func Read(dir string) (*Log, error) {
 		if err := validate(r, len(l.Records)); err != nil {
 			return nil, fmt.Errorf("%w: %s line %d: %w", ErrCorrupt, name, line, err)
 		}
+		if r.Op == OpCommit && aborted {
+			return nil, fmt.Errorf("%w: %s line %d: commit after abort", ErrCorrupt, name, line)
+		}
+		aborted = aborted || r.Op == OpAbort
 		if len(l.Records) > 0 && l.Records[len(l.Records)-1].Op == OpCommit {
 			return nil, fmt.Errorf("%w: %s line %d: record after commit", ErrCorrupt, name, line)
 		}
@@ -342,7 +356,7 @@ func validate(r Record, index int) error {
 		if !paths.ValidRel(r.Path) {
 			return fmt.Errorf("%s: path %q is not a clean relative path", r.Op, r.Path)
 		}
-	case OpCommit:
+	case OpCommit, OpAbort:
 	default:
 		return fmt.Errorf("unknown op %q", r.Op)
 	}

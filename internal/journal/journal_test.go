@@ -82,6 +82,26 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// An abort is what tells repair to undo a change that got as far as its state step.
+func TestAbortIsRead(t *testing.T) {
+	j, dir := create(t)
+	appendAll(t, j, Record{Op: OpCreated, Path: "a.txt"}, Record{Op: OpStep, Name: "state"})
+	l, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Aborted() {
+		t.Error("aborted before any abort was written")
+	}
+	appendAll(t, j, Record{Op: OpAbort})
+	if l, err = Read(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !l.Aborted() || l.Committed() || !l.HasStep("state") {
+		t.Errorf("log = %+v", l)
+	}
+}
+
 func TestCreateRefusesAnExistingJournal(t *testing.T) {
 	_, dir := create(t)
 	if _, err := Create(dir, begin(t)); err == nil {
@@ -179,6 +199,7 @@ func TestDamageIsCorrupt(t *testing.T) {
 		{"empty", func(string) string { return "" }},
 		{"two begins", func(s string) string { first, _, _ := strings.Cut(s, "\n"); return s + first + "\n" }},
 		{"record after commit", func(s string) string { return s + `{"op":"commit"}` + "\n" + `{"op":"created","path":"b"}` + "\n" }},
+		{"commit after abort", func(s string) string { return s + `{"op":"abort"}` + "\n" + `{"op":"commit"}` + "\n" }},
 		{"backup outside the journal", func(s string) string {
 			return s + `{"op":"backup","path":"x","backup":"../../x","size":1,"sha256":"` + h + `"}` + "\n"
 		}},

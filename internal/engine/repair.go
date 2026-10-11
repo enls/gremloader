@@ -63,7 +63,7 @@ func (e *Engine) repairOne(name string) *Item {
 			return it
 		}
 		it.Result, it.Reason = ResultRepaired, "finished the bookkeeping of a completed change"
-	case l.HasStep("state"):
+	case l.HasStep("state") && !l.Aborted():
 		if err := e.finishForward(name, l); err != nil {
 			it.Result, it.Err = ResultNeedsRepair, err
 			return it
