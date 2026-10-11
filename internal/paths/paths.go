@@ -133,8 +133,15 @@ func ValidPackageName(s string) bool {
 	if !packageName.MatchString(s) || strings.Contains(s, "..") || strings.HasSuffix(s, ".") {
 		return false
 	}
-	stem, _, _ := strings.Cut(s, ".")
-	return !windowsDevice[stem]
+	return !IsWindowsDeviceName(s)
+}
+
+// IsWindowsDeviceName reports whether one path component names a Windows device (con, NUL.txt,
+// Com1.log ...), in any case. Linux has no such names, so filepath.IsLocal accepts them there;
+// files that must mean the same on both systems check with this.
+func IsWindowsDeviceName(component string) bool {
+	stem, _, _ := strings.Cut(component, ".")
+	return windowsDevice[strings.ToLower(strings.TrimRight(stem, " "))]
 }
 
 var windowsDevice = map[string]bool{
