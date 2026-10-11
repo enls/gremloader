@@ -81,7 +81,7 @@ type Request struct {
 	Accept      string
 	Auth        string // the Authorization header, verbatim
 	IfNoneMatch string
-	Origin      string // which root served it: "api", "web" or "cdn"
+	Origin      string // which root served it: "api", "web", "cdn" or "blob"
 	Query       string // raw query string (the CDN's signed parameters live here)
 	UserAgent   string
 }
@@ -124,7 +124,8 @@ type Server struct {
 
 	useCDN    bool
 	cdn       *httptest.Server
-	feedLimit int // releases.atom entries; 0 means the default, 10
+	blob      *httptest.Server // attestation bundles (bundle_url), like GitHub's Azure storage
+	feedLimit int              // releases.atom entries; 0 means the default, 10
 
 	mu             sync.Mutex
 	releases       []*storedRelease
@@ -134,6 +135,8 @@ type Server struct {
 	quotaLimit     int // 0 = unlimited
 	quotaRemaining int
 	faults         []*Fault
+	attestations   map[string][]*storedAttestation // "owner/repo@sha256hex"
+	blobs          map[int64]*storedAttestation
 	requests       []Request
 }
 
@@ -149,10 +152,12 @@ type TB interface {
 func New(tb TB, opts ...Option) *Server {
 	tb.Helper()
 	s := &Server{
-		tb:     tb,
-		clock:  clock.System{},
-		assets: make(map[int64]*storedAsset),
-		nextID: 1000,
+		tb:           tb,
+		clock:        clock.System{},
+		assets:       make(map[int64]*storedAsset),
+		attestations: make(map[string][]*storedAttestation),
+		blobs:        make(map[int64]*storedAttestation),
+		nextID:       1000,
 	}
 	for _, o := range opts {
 		o(s)
@@ -163,6 +168,7 @@ func New(tb TB, opts ...Option) *Server {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/releases/tags/{tag}", s.apiByTag)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/releases/assets/{id}", s.apiAsset)
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/releases", s.apiList)
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/attestations/{digest}", s.apiAttestations)
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/latest", s.webLatest)
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/tag/{tag}", s.webTag)
 	mux.HandleFunc("GET /web/{owner}/{repo}/releases/download/{tag}/{name}", s.webDownload)
@@ -172,6 +178,13 @@ func New(tb TB, opts ...Option) *Server {
 		s.serve(mux, w, r)
 	}))
 	tb.Cleanup(s.srv.Close)
+
+	blobMux := http.NewServeMux()
+	blobMux.HandleFunc("GET /blob/{file}", s.blobBundle)
+	s.blob = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.serve(blobMux, w, r)
+	}))
+	tb.Cleanup(s.blob.Close)
 
 	if s.useCDN {
 		cdnMux := http.NewServeMux()
@@ -317,6 +330,8 @@ func (s *Server) serve(next http.Handler, w http.ResponseWriter, r *http.Request
 		origin = "api"
 	case strings.HasPrefix(r.URL.Path, "/cdn/"):
 		origin = "cdn"
+	case strings.HasPrefix(r.URL.Path, "/blob/"):
+		origin = "blob"
 	}
 
 	s.mu.Lock()

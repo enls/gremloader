@@ -316,17 +316,19 @@ func TestPlanFromTheLockMakesNoRequest(t *testing.T) {
 	}
 }
 
-func TestPlanRequiredAttestationCannotBeMetYet(t *testing.T) {
+// A required attestation is checked when the download is there (ADR 0014): the plan neither refuses
+// it up front, as M5 did, nor asks the attestation API.
+func TestPlanRequiredAttestationIsCheckedAtApply(t *testing.T) {
 	r := newRig(t, strings.Replace(appFile, `dir       = "{root}/App"`,
 		`dir       = "{root}/App"`+"\nverify = { require = [\"checksum\", \"attestation\"] }", 1))
 	r.publish("app", "1.0.0", 10, archives.F("app.exe", "x"))
+	r.srv.ResetRequests()
 	p := r.plan(r.engine(), Request{InstallMissing: true})
-	var ve *VerifyError
-	if it := item(t, p, "app"); it.Result != ResultFailed || !errors.As(it.Err, &ve) {
+	if it := item(t, p, "app"); it.Action != ActInstall || it.Err != nil {
 		t.Errorf("item = %+v", it)
 	}
-	if got := p.ExitCode(false); got != exitcode.VerifyFailed {
-		t.Errorf("exit = %d, want 5", got)
+	if n := r.srv.RequestCount("/attestations/"); n != 0 {
+		t.Errorf("%d attestation requests at plan time", n)
 	}
 }
 

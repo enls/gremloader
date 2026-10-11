@@ -12,6 +12,10 @@ root = 'C:\CraftWerk'
 
 [settings]
 channel = "stable"
+# The Craft apps publish no attestations yet. With the default verify.attestation = "if-present",
+# each download asks GitHub once whether there is one (a 404 today); if the apps start attesting,
+# they are checked from then on, and an attested app is not moved to an unattested version
+# without --allow-attestation-regression.
 verify  = { require = ["checksum"] }
 
 [preset.craft]

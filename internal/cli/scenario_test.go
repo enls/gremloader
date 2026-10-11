@@ -292,18 +292,24 @@ func TestC02VersionFromTheExe(t *testing.T) {
 }
 
 // C3: the latest release comes from GitHub's API, or from the release page when the API is
-// unavailable. Here the web path comes first: a plain update asks the API nothing at all, so a
-// rate-limited API does not matter.
+// unavailable. Here the web path comes first: a plain update resolves and downloads without the
+// API, so a rate-limited API does not matter. Its one API request is the attestation list (ADR
+// 0014, there is no web form of it); rate-limited, that is a warning for a package that was never
+// attested, and the update goes ahead.
 func TestC03UpdatesWithoutTheAPI(t *testing.T) {
 	forEachLayout(t, func(t *testing.T, r *rig) {
 		r.must(t, "install", "photocraft", "--yes")
 		r.publishCraft("photocraft", "2.0.0", 20, craftRelease{})
 		r.srv.SetRateLimited(true)
 		r.srv.ResetRequests()
-		r.must(t, "update", "--yes")
+		out := r.must(t, "update", "--yes")
 		r.holds(t, "photocraft", "2.0.0")
-		if n := r.srv.RequestCount("/api/"); n != 0 {
-			t.Errorf("%d API requests", n)
+		api, att := r.srv.RequestCount("/api/"), r.srv.RequestCount("/attestations/")
+		if api != att || att != 1 {
+			t.Errorf("%d API requests, %d of them for attestations", api, att)
+		}
+		if !strings.Contains(out, "attestation not checked") {
+			t.Errorf("no warning:\n%s", out)
 		}
 	})
 }

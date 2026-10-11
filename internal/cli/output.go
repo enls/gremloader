@@ -41,6 +41,7 @@ type jsonItem struct {
 	Dir     string   `json:"dir,omitempty"`
 	Reason  string   `json:"reason,omitempty"`
 	Notes   []string `json:"notes,omitempty"`
+	Signer  string   `json:"signer,omitempty"` // the workflow that built the download, when its attestation passed
 	Error   string   `json:"error,omitempty"`
 }
 
@@ -48,7 +49,7 @@ func jsonItems(items []*engine.Item) []jsonItem {
 	out := make([]jsonItem, 0, len(items))
 	for _, it := range items {
 		j := jsonItem{Package: it.Package, Action: string(it.Action), Result: string(it.Result), From: it.From, To: it.To,
-			Dir: it.Dir, Reason: it.Reason, Notes: it.Notes}
+			Dir: it.Dir, Reason: it.Reason, Notes: it.Notes, Signer: it.Signer}
 		if it.Err != nil {
 			j.Error = it.Err.Error()
 		}
@@ -89,6 +90,9 @@ func printItems(w io.Writer, items []*engine.Item, quiet bool) {
 		if !quiet {
 			for _, n := range it.Notes {
 				say(w, "  note: %s\n", indent(n))
+			}
+			if it.Signer != "" {
+				say(w, "  attested: built by %s\n", it.Signer)
 			}
 		}
 	}

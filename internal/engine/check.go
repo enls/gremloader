@@ -85,6 +85,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 		}
 		m := manifestOf(st.ar, dir, nil, shared)
 		rec.Tag, rec.Asset, rec.AssetSHA256, rec.VerifiedBy = fit.Release.Tag, fit.Asset.Name, st.got.SHA256, st.levels
+		rec.Attested = slices.Contains(st.levels, levelAttestation)
 		rec.Manifest = state.ManifestRel(name, v)
 		p := state.Path(e.cfg.Paths.State, rec.Manifest)
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -149,7 +150,7 @@ func (e *Engine) fetchVersion(ctx context.Context, name, version string) (*Item,
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		return it, nil, err
 	}
-	st, err := e.stage(ctx, it, e.cfg.Packages.Packages[name], work, ApplyOptions{})
+	st, err := e.stage(ctx, it, e.cfg.Packages.Packages[name], work, ApplyOptions{fetchOnly: true})
 	return it, st, err
 }
 

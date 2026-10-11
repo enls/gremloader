@@ -24,6 +24,8 @@ type change struct {
 	updateLock bool
 	accept     *engine.Acceptance
 	planOnly   bool
+	// allowRegression is --allow-attestation-regression (ADR 0014).
+	allowRegression bool
 }
 
 func definePlan(fs *flag.FlagSet) func(*call, []string) int {
@@ -39,6 +41,7 @@ func defineApply(fs *flag.FlagSet) func(*call, []string) int {
 	locked := fs.Bool("locked", false, "install exactly what gremloader.lock says (hash and size must match)")
 	updateLock := fs.Bool("update-lock", false, "afterwards, record what was installed in gremloader.lock")
 	accept := fs.String("accept-sha256", "", "not for apply: see install and update")
+	regression := regressionFlag(fs)
 	return func(c *call, args []string) int {
 		if *accept != "" {
 			return c.usagef("--accept-sha256 is for one package and one version: " +
@@ -47,7 +50,8 @@ func defineApply(fs *flag.FlagSet) func(*call, []string) int {
 		if *locked && *updateLock {
 			return c.usagef("--locked installs what the lock says; --update-lock rewrites it: use one")
 		}
-		return c.change(change{rq: engine.Request{Packages: args, InstallMissing: true, IgnoreCooldown: *now}, locked: *locked, updateLock: *updateLock})
+		return c.change(change{rq: engine.Request{Packages: args, InstallMissing: true, IgnoreCooldown: *now}, locked: *locked, updateLock: *updateLock,
+			allowRegression: *regression})
 	}
 }
 
@@ -60,6 +64,7 @@ func defineInstall(fs *flag.FlagSet) func(*call, []string) int {
 	updateLock := fs.Bool("update-lock", false, "afterwards, record what was installed in gremloader.lock")
 	accept := fs.String("accept-sha256", "", "accept this SHA-256 for the download although the release's checksum says otherwise (with <package>@<version>)")
 	adopt := fs.Bool("adopt", false, "record the existing folder as this package instead of installing (like the adopt command; @<version> is trusted)")
+	regression := regressionFlag(fs)
 	return func(c *call, args []string) int {
 		if len(args) != 1 {
 			return c.usagef("name one package, optionally with a version: <package>[@<version>]")
@@ -74,7 +79,7 @@ func defineInstall(fs *flag.FlagSet) func(*call, []string) int {
 			return c.adopt(name, want, false)
 		}
 		ch := change{rq: engine.Request{Packages: []string{name}, Want: want, InstallMissing: true, IgnoreCooldown: *now,
-			Overlay: *overlay, CreateDir: *createDir, AllowDowngrade: *downgrade, Force: *force}, updateLock: *updateLock}
+			Overlay: *overlay, CreateDir: *createDir, AllowDowngrade: *downgrade, Force: *force}, updateLock: *updateLock, allowRegression: *regression}
 		var code int
 		if ch.accept, code = c.acceptance(*accept, name, want, "install "+name+"@<version>"); code != exitcode.OK {
 			return code
@@ -91,6 +96,7 @@ func defineUpdate(fs *flag.FlagSet) func(*call, []string) int {
 	downgrade := fs.Bool("allow-downgrade", false, "allow --version to be lower than the installed one")
 	updateLock := fs.Bool("update-lock", false, "afterwards, record what was installed in gremloader.lock")
 	accept := fs.String("accept-sha256", "", "accept this SHA-256 for the download although the release's checksum says otherwise (with --version)")
+	regression := regressionFlag(fs)
 	return func(c *call, args []string) int {
 		if *want != "" && len(args) != 1 {
 			return c.usagef("--version needs exactly one package")
@@ -101,7 +107,7 @@ func defineUpdate(fs *flag.FlagSet) func(*call, []string) int {
 			}
 		}
 		ch := change{rq: engine.Request{Packages: args, Want: *want, IgnoreCooldown: *now, Force: *force, IncludeHeld: *held,
-			AllowDowngrade: *downgrade}, updateLock: *updateLock}
+			AllowDowngrade: *downgrade}, updateLock: *updateLock, allowRegression: *regression}
 		if *accept != "" && len(args) != 1 {
 			return c.usagef("--accept-sha256 is for exactly one package")
 		}
@@ -174,7 +180,7 @@ func (c *call) change(ch change) int {
 	if ok, code := c.confirm(p.Items); !ok {
 		return code
 	}
-	if err := s.e.Apply(ctx, p, engine.ApplyOptions{Accept: ch.accept}); err != nil {
+	if err := s.e.Apply(ctx, p, engine.ApplyOptions{Accept: ch.accept, AllowAttestationRegression: ch.allowRegression}); err != nil {
 		return c.failf(exitcode.Usage, "%v", err)
 	}
 	warnings := append(p.Warnings, c.recordInLock(ctx, s, p, ch.updateLock)...)
@@ -269,4 +275,10 @@ func (c *call) recordInLock(ctx context.Context, s *session, p *engine.Plan, upd
 		}
 	}
 	return warnings
+}
+
+// regressionFlag is --allow-attestation-regression (P3-10, ADR 0014): --yes never stands in for it.
+func regressionFlag(fs *flag.FlagSet) *bool {
+	return fs.Bool("allow-attestation-regression", false,
+		"change an attested package to a version whose attestation is missing or cannot be checked")
 }

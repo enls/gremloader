@@ -13,6 +13,8 @@ func TestURL(t *testing.T) {
 		"https://github.com/o/r/releases/download/v1/a.zip":      "https://github.com/o/r/releases/download/v1/a.zip",
 		"https://user:pass@example.com/a?token=abc#frag":         "https://redacted@example.com/a",
 		"https://api.github.com/repos/o/r/releases?per_page=100": "https://api.github.com/repos/o/r/releases",
+		// An attestation bundle_url (ADR 0014): an Azure SAS URL, signed for about an hour.
+		"https://tmaproduction.blob.core.windows.net/attestations/1/2026/09/30/5.json.sn?se=2026-10-11T21%3A06%3A44Z&sig=SECRETSAS%3D&skoid=x&sp=r&sr=b&sv=2026-12-06": "https://tmaproduction.blob.core.windows.net/attestations/1/2026/09/30/5.json.sn",
 		"not a url?secret=1": "not a url",
 		"relative/path#x":    "relative/path",
 		"":                   "",

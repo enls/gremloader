@@ -142,8 +142,9 @@ type rawLayer struct {
 }
 
 type rawVerify struct {
-	Require     *[]string `toml:"require"`
-	Attestation *string   `toml:"attestation"`
+	Require        *[]string `toml:"require"`
+	Attestation    *string   `toml:"attestation"`
+	SignerWorkflow *string   `toml:"signer_workflow"`
 }
 
 type rawLimits struct {
@@ -487,6 +488,7 @@ const (
 	kChecksums       = "checksums"
 	kVerifyRequire   = "verify.require"
 	kVerifyAttest    = "verify.attestation"
+	kVerifySigner    = "verify.signer_workflow"
 	kDir             = "dir"
 	kSharedDir       = "shared_dir"
 	kStrip           = "strip"
@@ -505,6 +507,9 @@ const (
 )
 
 var tagPrefixRule = regexp.MustCompile(`^[A-Za-z0-9._+-]{0,64}$`)
+
+// signerWorkflow is a workflow file of the package's repository, as attest.Policy takes it (ADR 0014).
+var signerWorkflow = regexp.MustCompile(`^\.github/workflows/[^/@]+\.ya?ml(@.+)?$`)
 
 // layer validates one table and turns it into typed values.
 func (s *src) layer(r *rawLayer, key []string, where string, kind layerKind) *layer {
@@ -580,6 +585,13 @@ func (s *src) layer(r *rawLayer, key []string, where string, kind layerKind) *la
 			}
 		}
 		oneOf(v.Attestation, kVerifyAttest, "if-present", "off")
+		if w := v.SignerWorkflow; w != nil {
+			if !signerWorkflow.MatchString(*w) || strings.Contains(*w, "..") {
+				s.problem(at("verify", "signer_workflow"), "%q is not .github/workflows/<file>.yml, optionally with @<ref>", *w)
+			} else {
+				set(kVerifySigner, *w, "verify", "signer_workflow")
+			}
+		}
 	}
 	if r.Dir != nil {
 		l.keyed[kDir] = s.keyedTemplates(r.Dir, at("dir"), where, forDir, keyOS)
@@ -913,6 +925,7 @@ func (b *builder) effective(name string, layers []*layer, vars map[string]string
 	p.Channel = str(kChannel, "stable")
 	p.API = str(kAPI, string(github.ModeAuto))
 	p.Attestation = str(kVerifyAttest, "if-present")
+	p.SignerWorkflow = str(kVerifySigner, "")
 	p.CooldownUnknown = str(kCooldownUnknown, "deny")
 	p.HookFail = str(kHookFail, "warn")
 	p.Pin = str(kPin, "")

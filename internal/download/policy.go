@@ -36,6 +36,15 @@ func GitHubPolicy() Policy {
 	}
 }
 
+// BundlePolicy is GitHubPolicy plus the Azure storage GitHub serves attestation bundles from
+// (`bundle_url`, ADR 0014). It is for fetching bundles only, never assets; the token goes nowhere
+// new. The bundle is verified cryptographically, so the host is reached, not trusted.
+func BundlePolicy() Policy {
+	p := GitHubPolicy()
+	p.Hosts = append(p.Hosts, "*.blob.core.windows.net")
+	return p
+}
+
 // check reports why u may not be requested, or nil.
 func (p Policy) check(u *url.URL) error {
 	switch {

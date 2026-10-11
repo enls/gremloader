@@ -34,6 +34,11 @@ release assets, on Windows and Linux:
   stable exit codes (`gremloader help` lists them all).
 - Downloads are checked against the release's checksum file (or GitHub's digest) before anything
   is unpacked; a mismatch is refused, never prompted.
+- When a release publishes a build-provenance attestation (GitHub's artifact attestations), it is
+  verified in-process with Sigstore: the download must have been built by a workflow of the
+  package's own repository (optionally a named workflow, `verify.signer_workflow`). A package that
+  was attested is not moved to a version without one unless you say so
+  (`--allow-attestation-regression`). See [ADR 0014](docs/decisions/0014-attestation.md).
 - Every change is journaled: a failure or a crash at any point leaves the old version or the new
   one, never a mix (`repair` finishes an interrupted run). One version back is kept for `rollback`.
 - Hooks (`post_install`, `post_update`, `pre_remove`, `post_remove`) run as argument lists, never
@@ -41,14 +46,18 @@ release assets, on Windows and Linux:
 - [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with
   notes on moving over from CraftWerk.
 
-Not there yet: attestation checks (next), updating GremLoader itself, the scheduled run, other
-sources (apt, winget, Docker Compose) and the web UI.
+Not there yet: updating GremLoader itself (next), the scheduled run, other sources (apt, winget,
+Docker Compose) and the web UI. GitHub's release attestations, and attestations of private
+repositories, are not checked.
 
 What was tested: everything has automated tests, including CraftWerk's behaviours ported as a
 scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real
 one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps
 adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and
-reinstall. Not yet on Linux.
+reinstall. Attestations against the real GitHub and Sigstore, on Windows: GitHub's own CLI
+installed fresh and updated with its provenance verified, a wrong `signer_workflow` refused, a
+check that could not be made refused for an attested install, and a Craft app (no attestations)
+installed as before. Not yet on Linux.
 
 ## Building
 

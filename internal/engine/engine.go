@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/enls/gremloader/internal/attest"
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
@@ -75,6 +76,9 @@ type Config struct {
 	FreeSpace func(path string) (uint64, error)
 	// ExeVersion reads an executable's product version (adopt); default peversion.ProductVersion.
 	ExeVersion func(path string) (string, error)
+	// Attest checks attestations (ADR 0014). nil: they cannot be checked, as if unreachable, so a
+	// package that requires one is refused and an attested one never regresses silently.
+	Attest Attester
 }
 
 // Engine is a loaded state plus the means to change it.
@@ -182,6 +186,8 @@ type Item struct {
 	// Override is set when --accept-sha256 let a download through: what gremloader.lock should
 	// record for this platform if it names the package at this version (lock.File.Override).
 	Override *lock.Asset
+	// Signer is the workflow that built the download, when its attestation passed (ADR 0014).
+	Signer string
 }
 
 // Plan is what a run will do.
@@ -254,7 +260,7 @@ func isOffline(err error) bool {
 	switch {
 	case err == nil:
 		return false
-	case errors.As(err, &rl):
+	case errors.As(err, &rl), errors.Is(err, attest.ErrUnreachable):
 		return true
 	case errors.As(err, &se), errors.As(err, &pe), errors.Is(err, github.ErrNotFound),
 		errors.Is(err, context.Canceled):
