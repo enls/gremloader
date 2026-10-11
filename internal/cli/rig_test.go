@@ -42,6 +42,8 @@ type rig struct {
 	cwd     string
 	env     map[string]string
 	running []proc.Process
+	stdin   string // what the user types
+	tty     bool   // stdin is a terminal
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -85,6 +87,7 @@ func (r *rig) deps() deps {
 		cwd:       func() (string, error) { return r.cwd, nil },
 		home:      filepath.Join(r.root, "userhome"),
 		clock:     r.clock,
+		stdinTTY:  func() bool { return r.tty },
 		apiBase:   r.srv.APIBase(),
 		webBase:   r.srv.WebBase(),
 		policy:    &download.Policy{Hosts: []string{"127.0.0.1"}, TokenHosts: []string{api.Host}, AllowHTTP: true},
@@ -98,7 +101,7 @@ func (r *rig) deps() deps {
 func (r *rig) run(args ...string) (code int, stdout, stderr string) {
 	r.t.Helper()
 	var out, errb bytes.Buffer
-	code = runWith(append(args, "--root", r.root), IO{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errb}, r.deps())
+	code = runWith(append(args, "--root", r.root), IO{Stdin: strings.NewReader(r.stdin), Stdout: &out, Stderr: &errb}, r.deps())
 	return code, out.String(), errb.String()
 }
 
@@ -192,3 +195,31 @@ func (r *rig) installedAs(t *testing.T, name, v string) {
 		t.Fatal(err)
 	}
 }
+
+// publishBadSums adds v whose checksum file names a hash that is not the asset's. It returns the
+// asset's real hash.
+func (r *rig) publishBadSums(v string) string {
+	r.t.Helper()
+	name := "app-" + v + ".zip"
+	zip := archives.Zip(archives.X("app-"+v+"/app.exe", "app "+v))
+	r.srv.AddRelease("o", "app", fakerelease.Release{
+		Tag: "v" + v, PublishedAt: r.clock.Now().Add(-24 * time.Hour),
+		Assets: []fakerelease.Asset{
+			{Name: name, Data: zip},
+			{Name: "SHA256SUMS.txt", Data: []byte(strings.Repeat("ab", 32) + "  " + name + "\n")},
+		},
+	})
+	sum := sha256.Sum256(zip)
+	return hex.EncodeToString(sum[:])
+}
+
+func (r *rig) appExe() string {
+	r.t.Helper()
+	b, err := os.ReadFile(filepath.Join(r.dir(), "app.exe"))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func (r *rig) lockFile() string { return filepath.Join(r.home, "config", "gremloader.lock") }

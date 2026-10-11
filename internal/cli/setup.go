@@ -28,6 +28,8 @@ type deps struct {
 	cwd    func() (string, error)
 	home   string // the user's home folder ("~" in package files)
 	clock  clock.Clock
+	// stdinTTY: can a prompt be answered on stdin? Without it, changes need --yes.
+	stdinTTY func() bool
 
 	// Network: empty bases and a nil policy mean the real GitHub.
 	apiBase, webBase string
@@ -43,7 +45,7 @@ type deps struct {
 
 func systemDeps() deps {
 	home, _ := os.UserHomeDir()
-	return deps{getenv: os.Getenv, cwd: os.Getwd, home: home, clock: clock.System{}}
+	return deps{getenv: os.Getenv, cwd: os.Getwd, home: home, clock: clock.System{}, stdinTTY: func() bool { return isTerminal(os.Stdin) }}
 }
 
 // failf reports a failure that ends the command before any package result exists, in the

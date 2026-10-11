@@ -79,6 +79,10 @@ func init() {
 	commands = []*command{
 		{name: "list", summary: "List packages: installed, latest seen, status (no network)", define: defineList},
 		{name: "check", args: "[package...]", summary: "Look for updates; exit 2 when there are some", define: defineCheck},
+		{name: "plan", args: "[package...]", summary: "Show what apply would do, changing nothing", define: definePlan},
+		{name: "apply", args: "[package...]", summary: "Install missing packages and update installed ones", define: defineApply},
+		{name: "install", args: "<package>[@<version>]", summary: "Install one package", define: defineInstall},
+		{name: "update", args: "[package...]", summary: "Update installed packages", define: defineUpdate},
 		{name: "explain", args: "<package>", summary: "Show a package's effective settings and where each comes from", define: defineExplain},
 		{name: "log", summary: "Show the event log", define: defineLog},
 		{name: "version", summary: "Print the version and build information", define: defineVersion},
