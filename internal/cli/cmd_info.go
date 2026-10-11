@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -304,7 +303,7 @@ func defineCheck(fs *flag.FlagSet) func(*call, []string) int {
 			return code
 		}
 		defer s.close()
-		p, err := s.e.Plan(context.Background(), engine.Request{Packages: args, IgnoreCooldown: *now})
+		p, err := s.e.Plan(c.ctx(), engine.Request{Packages: args, IgnoreCooldown: *now})
 		if err != nil {
 			return c.failf(planErrCode(w, args), "%v", err)
 		}

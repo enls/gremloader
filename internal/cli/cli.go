@@ -9,8 +9,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/enls/gremloader/internal/exitcode"
 	"github.com/enls/gremloader/internal/version"
@@ -58,7 +61,11 @@ type call struct {
 
 // usagef reports a wrong command line (exit 4).
 func (c *call) usagef(format string, a ...any) int {
-	say(c.io.Stderr, "gremloader %s: %s\nRun \"gremloader %s -h\" for help.\n", c.name, fmt.Sprintf(format, a...), c.name)
+	msg := fmt.Sprintf(format, a...)
+	say(c.io.Stderr, "gremloader %s: %s\nRun \"gremloader %s -h\" for help.\n", c.name, msg, c.name)
+	if c.g.json {
+		c.writeJSON(jsonOut{Command: c.name, ExitCode: exitcode.Usage, Error: msg})
+	}
 	return exitcode.Usage
 }
 
@@ -161,7 +168,16 @@ func commandHelp(w io.Writer, c *command, fs *flag.FlagSet) {
 }
 
 // Run executes one command line (args excludes the program name) and returns the exit code.
-func Run(args []string, io IO) int { return runWith(args, io, systemDeps()) }
+func Run(args []string, io IO) int {
+	sig := make(chan os.Signal, 2)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	ctx, stop := interruptible(sig, io.Stderr, os.Exit)
+	defer stop()
+	d := systemDeps()
+	d.ctx = ctx
+	return runWith(args, io, d)
+}
 
 func runWith(args []string, io IO, d deps) int {
 	name, rest, ok := splitCommand(args)
@@ -187,8 +203,10 @@ func runWith(args []string, io IO, d deps) int {
 			commandHelp(io.Stdout, cmd, fs)
 			return exitcode.OK
 		}
-		say(io.Stderr, "gremloader %s: %v\nRun \"gremloader %s -h\" for help.\n", name, err, name)
-		return exitcode.Usage
+		// The parser stops at the first bad flag, which may come before --json: look for it on
+		// the line so that the error is still one JSON object.
+		g.json = g.json || wantsJSON(rest)
+		return (&call{name: name, io: io, g: g, d: d}).usagef("%v", err)
 	}
 	return runCmd(&call{name: name, io: io, g: g, d: d}, fs.Args())
 }

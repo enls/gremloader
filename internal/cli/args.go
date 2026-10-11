@@ -81,3 +81,17 @@ func isBoolFlag(f *flag.Flag) bool {
 	b, ok := f.Value.(interface{ IsBoolFlag() bool })
 	return ok && b.IsBoolFlag()
 }
+
+// wantsJSON reports whether --json is on the line (before any "--"), for errors met before the
+// flags could all be parsed.
+func wantsJSON(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if n, _ := flagName(a); isFlag(a) && n == "json" {
+			return !strings.HasSuffix(a, "=false")
+		}
+	}
+	return false
+}

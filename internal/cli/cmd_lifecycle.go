@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"strings"
@@ -53,7 +52,7 @@ func defineRemove(fs *flag.FlagSet) func(*call, []string) int {
 					return code
 				}
 			}
-			return c.done(s.e.Remove(context.Background(), name, engine.RemoveOptions{DeleteDir: *deleteDir}))
+			return c.done(s.e.Remove(c.ctx(), name, engine.RemoveOptions{DeleteDir: *deleteDir}))
 		})
 	}
 }
@@ -72,7 +71,7 @@ func defineRollback(*flag.FlagSet) func(*call, []string) int {
 					return code
 				}
 			}
-			return c.done(s.e.Rollback(context.Background(), name))
+			return c.done(s.e.Rollback(c.ctx(), name))
 		})
 	}
 }
@@ -101,7 +100,7 @@ func defineVerify(fs *flag.FlagSet) func(*call, []string) int {
 					return c.failf(exitcode.Usage, "package %q is not in %s", n, s.file)
 				}
 			}
-			checks := s.e.Verify(context.Background(), args, *remote)
+			checks := s.e.Verify(c.ctx(), args, *remote)
 			code := exitcode.OK
 			var rows []checkRow
 			for _, ch := range checks {
@@ -180,7 +179,7 @@ func (c *call) adopt(name, v string, check bool) int {
 		if s.cfg.Packages[name] == nil {
 			return c.failf(exitcode.Usage, "package %q is not in %s", name, s.file)
 		}
-		return c.done(s.e.Adopt(context.Background(), name, engine.AdoptOptions{Version: v, Verify: check}))
+		return c.done(s.e.Adopt(c.ctx(), name, engine.AdoptOptions{Version: v, Verify: check}))
 	})
 }
 
@@ -194,7 +193,7 @@ func defineRepair(fs *flag.FlagSet) func(*call, []string) int {
 		}
 		return c.withEngine(func(s *session) int {
 			if *forget == "" {
-				items := s.e.Repair(context.Background())
+				items := s.e.Repair(c.ctx())
 				if len(items) == 0 && !c.g.json {
 					say(c.io.Stdout, "nothing to repair\n")
 					return exitcode.OK
@@ -300,7 +299,7 @@ func (c *call) local(name string, edit func(*pkgfile.LocalPackage) string) int {
 func defineLock(*flag.FlagSet) func(*call, []string) int {
 	return func(c *call, args []string) int {
 		return c.withEngine(func(s *session) int {
-			entries, items, err := s.e.Lock(context.Background(), engine.LockOptions{Packages: args})
+			entries, items, err := s.e.Lock(c.ctx(), engine.LockOptions{Packages: args})
 			if err != nil {
 				return c.failf(planErrCode(s.world, args), "%v", err)
 			}

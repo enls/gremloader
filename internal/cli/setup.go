@@ -28,6 +28,8 @@ type deps struct {
 	cwd    func() (string, error)
 	home   string // the user's home folder ("~" in package files)
 	clock  clock.Clock
+	// ctx ends the run early (an interrupt); nil = never.
+	ctx context.Context
 	// stdinTTY: can a prompt be answered on stdin? Without it, changes need --yes.
 	stdinTTY func() bool
 
@@ -172,4 +174,12 @@ func (c *call) open(w *world) (*session, int) {
 		return nil, c.failf(exitcode.Failed, "%v", err)
 	}
 	return &session{world: w, e: e, log: log, lock: lk}, exitcode.OK
+}
+
+// ctx is the run's context: cancelled by the first interrupt.
+func (c *call) ctx() context.Context {
+	if c.d.ctx == nil {
+		return context.Background()
+	}
+	return c.d.ctx
 }

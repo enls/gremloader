@@ -153,7 +153,7 @@ func (c *call) change(ch change) int {
 		return code
 	}
 	defer s.close()
-	ctx := context.Background()
+	ctx := c.ctx()
 
 	p, err := s.e.Plan(ctx, ch.rq)
 	if err != nil {
