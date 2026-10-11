@@ -26,3 +26,13 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   download or a publisher who did not regenerate the checksum file, and the override should record
   *which bytes* were accepted. A prompt that defaults to N, only on a TTY, was considered a fallback
   but the hash form is the only way through. See the Phase 1 plan, E.3.4.
+- **Escaping template values that contain wildcard characters** (so a `[vars]` value with `*` could
+  appear in an asset name literally). The asset matcher (`path.Match` behind `SelectAsset`) refuses
+  `\`, so there is no escape syntax to use, and inventing one for a case no real release has adds a
+  rule to learn. A substituted value that would add `/ \ * ? [ ]` to a file name is refused instead.
+  See ADR 0011.
+- **Local `[settings]` overriding presets and packages.** A machine-wide default set in the UI
+  would then silently beat a value the package file states for one package. It sits just above
+  the file's `[settings]` instead; per-package local values still win over everything. See ADR 0011.
+- **A wait-for-the-lock mode on the run lock.** A second run fails at once with exit code 3; a
+  scheduler that wants to retry can do so. Waiting hides a hung run behind a silent one.

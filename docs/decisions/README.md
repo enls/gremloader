@@ -16,5 +16,6 @@ one. Turned-down ideas are filed in [../decided-against.md](../decided-against.m
 | [0008](0008-package-version-rules.md) | Package version rules (`ver`) |
 | [0009](0009-resolution-chain.md) | How a release is found and fetched: web first, API as fallback, one network layer |
 | [0010](0010-extractor-policy.md) | What the archive extractor accepts: one policy for both OSes, reject not skip, two passes |
+| [0011](0011-files-and-formats.md) | Files and formats: strict everywhere, layered package file, whitelisted local override, atomic writes, kernel run lock |
 
 Format: Context, Decision, Reasons, Consequences (and Rejected alternatives where there were any).
