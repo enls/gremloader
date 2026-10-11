@@ -181,13 +181,9 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 // change journals and applies ops to it.Dir and records the result (steps 4 to 7). On failure the
 // journal is undone; if the undo fails too, the error is a RepairError and the journal stays.
 func (e *Engine) change(ctx context.Context, it *Item, result *state.Package, m *state.Manifest, ops []op) error {
-	var raw json.RawMessage
-	if result != nil {
-		b, err := json.Marshal(result)
-		if err != nil {
-			return err
-		}
-		raw = b
+	raw, err := json.Marshal(changeRecord{Before: e.installed(it.Package), After: result})
+	if err != nil {
+		return err
 	}
 	jdir := e.cfg.Paths.Journal(it.Package)
 	j, err := journal.Create(jdir, journal.Record{
@@ -302,6 +298,14 @@ func (e *Engine) tidy(name string) error {
 			return nil // not ours to tidy: unfinished() reports it
 		}
 		if !keepsJournal(l) {
+			if l.Begin().Action == string(ActRemove) {
+				// A removed package keeps nothing: its rollback record and manifests go too.
+				for _, d := range []string{pdir, e.cfg.Paths.Manifests(name)} {
+					if err := os.RemoveAll(d); err != nil {
+						return err
+					}
+				}
+			}
 			if err := os.RemoveAll(jdir); err != nil {
 				return err
 			}
@@ -510,4 +514,33 @@ func newID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// changeRecord is the begin record's opaque result: the package's state record before and after
+// the change (nil: not installed). Finishing forward writes After; a rollback restores Before,
+// complete with tag, asset and verification levels, which also makes a rollback of a rollback come
+// out right.
+type changeRecord struct {
+	Before *state.Package `json:"before"`
+	After  *state.Package `json:"after"`
+}
+
+func readChange(l *journal.Log) (changeRecord, error) {
+	var cr changeRecord
+	if err := json.Unmarshal(l.Begin().Result, &cr); err != nil {
+		return cr, fmt.Errorf("the journal's state records: %w", err)
+	}
+	return cr, nil
+}
+
+// installed is a copy of the package's install record without what checks learned, or nil when it
+// is not installed.
+func (e *Engine) installed(name string) *state.Package {
+	cur := e.st.Packages[name]
+	if cur == nil || cur.Version == "" {
+		return nil
+	}
+	c := *cur
+	c.LatestSeen, c.LastCheck, c.LastError = nil, nil, ""
+	return &c
 }

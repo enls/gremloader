@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -38,17 +39,18 @@ dir       = "{root}/App"
 
 // rig is one isolated world: a fake GitHub, a state directory and an install root in temp dirs.
 type rig struct {
-	t       *testing.T
-	srv     *fakerelease.Server
-	clock   *clock.Fake
-	root    string // {root}
-	paths   paths.Paths
-	file    string // gremloader.toml
-	running []proc.Process
-	hooks   *fakeHooks
-	token   string
-	free    func(string) (uint64, error) // nil: plenty
-	wrap    func(Fetcher) Fetcher        // nil: the real download client
+	t          *testing.T
+	srv        *fakerelease.Server
+	clock      *clock.Fake
+	root       string // {root}
+	paths      paths.Paths
+	file       string // gremloader.toml
+	running    []proc.Process
+	hooks      *fakeHooks
+	token      string
+	free       func(string) (uint64, error) // nil: plenty
+	wrap       func(Fetcher) Fetcher        // nil: the real download client
+	exeVersion func(string) (string, error) // nil: none
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -123,11 +125,17 @@ func (r *rig) engineAt(apiBase, webBase string) *Engine {
 		Source:    github.New(client, github.Options{APIBase: apiBase, WebBase: webBase}),
 		Fetcher:   fetcher,
 		FreeSpace: free,
-		Events:    log,
-		Hooks:     r.hooks,
-		Clock:     r.clock,
-		Home:      filepath.Join(r.root, "home"),
-		Running:   func(dir string) ([]proc.Process, error) { return r.running, nil },
+		ExeVersion: func(p string) (string, error) {
+			if r.exeVersion == nil {
+				return "", errors.New("no version resource")
+			}
+			return r.exeVersion(p)
+		},
+		Events:  log,
+		Hooks:   r.hooks,
+		Clock:   r.clock,
+		Home:    filepath.Join(r.root, "home"),
+		Running: func(dir string) ([]proc.Process, error) { return r.running, nil },
 	})
 	if err != nil {
 		r.t.Fatal(err)

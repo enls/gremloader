@@ -35,6 +35,10 @@ type Request struct {
 	Overlay        bool // allow installing into a non-empty folder GremLoader does not manage
 	CreateDir      bool // allow creating a missing parent folder
 	Locked         *lock.File
+
+	// forFetch: resolve and pick assets only, for adopt --verify and verify --remote, which read
+	// a release without installing it (no folder rules, no drift).
+	forFetch bool
 }
 
 // Plan resolves each package and says what applying would do. It touches no install, but it does
@@ -184,6 +188,9 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 	}
 	if err := e.checkVerifiable(it, pkg); err != nil {
 		it.fail(err)
+		return it
+	}
+	if rq.forFetch {
 		return it
 	}
 	if it.From == "" {

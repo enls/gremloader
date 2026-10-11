@@ -153,3 +153,8 @@ func isEmptyDir(path string) bool {
 	_, err = f.Readdirnames(1)
 	return errors.Is(err, io.EOF)
 }
+
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
+}

@@ -68,6 +68,44 @@ replaced, and `state.json`'s rollback record must name a version.
 downloading, verifying and unpacking never touch the install folder, so a failure there only has
 to delete the staging area, and the begin record can carry the final state record.
 
+**The begin record carries the package's state record before and after the change.** Finishing
+forward writes "after"; a rollback restores "before", complete with tag, asset and verification
+levels (plan E.2.4's `previous` names only a version). Because a rollback is itself a change, a
+rollback of a rollback restores the newer version the same way.
+
+**Rollback** (plan E.3.3) reads `previous/<pkg>/` backwards and runs it as a new change: files the
+update created are removed (and saved), saved files are placed back as links or copies (the record
+must stay whole until the rollback commits), folders are removed or recreated. Every saved file is
+re-hashed against its record first; one that is missing or changed refuses the rollback with the
+current install untouched (P3-3). The version rolled away from is added to `rejected`, so the next
+scheduled run does not reinstall it (P3-2); a version installed or rolled forward to on purpose
+leaves `rejected`. The rollback's own journal becomes the new `previous/`, so a second rollback goes
+forward. `post_update` runs with `GREMLOADER_ACTION=rollback`.
+
+**Remove** runs `pre_remove` (its failure stops the remove before anything is deleted), deletes the
+manifest's files and the folders GremLoader made once empty, then `post_remove`, and forgets the
+rollback record, manifests and rejections. An adopted package without a file list is refused
+unless `--delete-dir`, which renames the folder aside and deletes it whole.
+
+**Adopt** records an existing folder without touching a file: `--version` is trusted;
+`version_from_exe` reads a Windows executable's ProductVersion (`peversion`, the value CraftWerk
+read); `--verify` downloads that release, verifies it like an install, and records the folder only
+if every file of the release is there with the same bytes, which also yields a manifest. **Verify**
+re-hashes installed files against the manifest, or with `--remote` against the release itself, and
+lists a quarantined download.
+
+**Hash mismatch** (plan E.3.4, decided with the user 2026-10-10): a hard failure, exit 5, never a
+prompt. The download is fetched once more first (transient corruption is the common cause), as is
+an archive found damaged when nothing had verified its hash (one whose hash checked out is the
+publisher's: the same bytes would come again). A final mismatch keeps the bytes, never unpacked,
+in `state/quarantine/<pkg>/` (one per package, replaced by the next failure, at most 512 MiB, with
+an `info.json` either way), and the message names every trusted hash and its source, the hash
+received, the likely causes without claiming malice, and the exact command to accept it.
+`--accept-sha256 <hash>` is honoured for one package and version per run, only when it equals the
+bytes received, only for a mismatch (not, say, a checksum file that does not list the asset); it
+is logged with code `hash-override` and recorded as `verified_by = ["hash-override"]`. A package
+file cannot carry one. `--locked` mismatches need it too. Writing it into the lock is M6.
+
 **Preflight** (nothing is written until all pass): an unfinished journal, a running program whose
 executable lies in the install folder (`proc`, by path, not name; result `skipped`, not a failure:
 an open app is normal for a scheduled run), and free space when the asset size is known (three
@@ -86,6 +124,14 @@ up).
 4. `Retry-After` is printed in rate-limit and status errors, saying when it was longer than the run
    waits.
 5. A sidecar checksum file whose line names another file is accepted with a warning in the plan.
+
+## Rejected alternatives
+
+- **Automatic repair at the start of every run** (filed in decided-against).
+- **A copy of the old folder as the rollback record** (CraftWerk's `previous\`): it copies every
+  byte on every update and cannot say which files the update added.
+- **Writing the journal from the end of the preflight** (plan E.3.2): steps 1-3 do not touch the
+  install, so the journal would only record staging, which a failure deletes anyway.
 
 ## Reasons
 
@@ -113,7 +159,12 @@ the commit, exactly the new one); **a simulated crash at every fault point**, th
 exactly the old or exactly the new version with `state.json` agreeing; a failed undo leaves
 `needs-repair` and a later repair restores; **a real process kill** at four points mid-update, then
 repair; cancellation between operations; a running app; a hash mismatch and an empty archive
-install nothing; a first install that fails removes the folder it made.
+install nothing; a first install that fails removes the folder it made. The same failure and crash
+sweeps over **rollback** and **remove**. Rollback both ways with the full record restored;
+update, rollback, update ends where the first update did and the next plan is empty; a damaged
+rollback record refuses; an adopted install updated and rolled back is exactly what was adopted;
+remove keeps the user's files; adopt by version, by executable version, and with `--verify`
+(matching and not); verify locally and remotely; every hash-mismatch rule above.
 
 **Not verified:** two volumes for real (the cross-volume path is tested by making the first rename
 fail as one would); the sharing-violation retry against a real antivirus; hard links on FAT or

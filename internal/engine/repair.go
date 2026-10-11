@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -89,16 +88,14 @@ func (e *Engine) repairOne(name string) *Item {
 // finishForward completes a change whose files are all in place: the manifest and state record it
 // was going to write are in the journal.
 func (e *Engine) finishForward(name string, l *journal.Log) error {
-	b := l.Begin()
-	var result *state.Package
-	if len(b.Result) > 0 && string(b.Result) != "null" {
-		result = &state.Package{}
-		if err := json.Unmarshal(b.Result, result); err != nil {
-			return fmt.Errorf("the journal's state record: %w", err)
-		}
+	cr, err := readChange(l)
+	if err != nil {
+		return err
 	}
+	result := cr.After
 	var m *state.Manifest
-	if mp := filepath.Join(l.Dir, journal.ManifestName); result != nil && result.Manifest != "" {
+	// An install or update carries its new manifest; a rollback goes back to one that exists.
+	if mp := filepath.Join(l.Dir, journal.ManifestName); result != nil && result.Manifest != "" && fileExists(mp) {
 		var err error
 		if m, err = state.LoadManifest(mp); err != nil {
 			return fmt.Errorf("the journal's manifest: %w", err)

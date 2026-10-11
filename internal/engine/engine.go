@@ -18,6 +18,7 @@ import (
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/exitcode"
 	"github.com/enls/gremloader/internal/paths"
+	"github.com/enls/gremloader/internal/peversion"
 	"github.com/enls/gremloader/internal/pkgfile"
 	"github.com/enls/gremloader/internal/platform"
 	"github.com/enls/gremloader/internal/proc"
@@ -69,6 +70,8 @@ type Config struct {
 	Running func(dir string) ([]proc.Process, error)
 	// FreeSpace is the space available on the volume holding a path; default: asked of the system.
 	FreeSpace func(path string) (uint64, error)
+	// ExeVersion reads an executable's product version (adopt); default peversion.ProductVersion.
+	ExeVersion func(path string) (string, error)
 }
 
 // Engine is a loaded state plus the means to change it.
@@ -94,6 +97,9 @@ func New(cfg Config) (*Engine, error) {
 	}
 	if cfg.FreeSpace == nil {
 		cfg.FreeSpace = freeBytes
+	}
+	if cfg.ExeVersion == nil {
+		cfg.ExeVersion = peversion.ProductVersion
 	}
 	st, err := state.Load(cfg.Paths.StateFile())
 	if err != nil {
