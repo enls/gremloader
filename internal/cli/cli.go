@@ -170,6 +170,9 @@ func commandHelp(w io.Writer, c *command, fs *flag.FlagSet) {
 
 // Run executes one command line (args excludes the program name) and returns the exit code.
 func Run(args []string, io IO) int {
+	if exe, err := os.Executable(); err == nil {
+		removeAside(exe)
+	}
 	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)

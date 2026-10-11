@@ -130,6 +130,17 @@ func (c *call) selfExe() (string, error) {
 	return filepath.Abs(p)
 }
 
+// removeAside deletes what an earlier self-update moved the binary at exe aside to (ADR 0015).
+// It runs at every start; a name still held by a program that is running stays for next time.
+func removeAside(exe string) {
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	for _, n := range engine.AsideNames(exe) {
+		_ = os.Remove(n)
+	}
+}
+
 func sameDir(a, b string, foldCase bool) bool {
 	a, b = filepath.Clean(a), filepath.Clean(b)
 	if foldCase {

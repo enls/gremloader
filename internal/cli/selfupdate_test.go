@@ -289,3 +289,22 @@ func TestSelfUpdateFollowsTheRunningBinary(t *testing.T) {
 		t.Errorf("the old folder was changed: %q", b)
 	}
 }
+
+// Every start removes the names an earlier self-update moved the binary aside to, and nothing else.
+func TestRemoveAside(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "gremloader.exe")
+	for _, n := range []string{"gremloader.exe", "gremloader.exe.old", "gremloader.exe.old.3", "gremloader.exe.older", "other.old", "gremloader.exe.old.10"} {
+		noErr(t, os.WriteFile(filepath.Join(dir, n), []byte(n), 0o600))
+	}
+	removeAside(exe)
+	ents, err := os.ReadDir(dir)
+	noErr(t, err)
+	var left []string
+	for _, e := range ents {
+		left = append(left, e.Name())
+	}
+	if want := []string{"gremloader.exe", "gremloader.exe.old.10", "gremloader.exe.older", "other.old"}; strings.Join(left, " ") != strings.Join(want, " ") {
+		t.Errorf("left %v, want %v", left, want)
+	}
+}
