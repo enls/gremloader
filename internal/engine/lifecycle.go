@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/journal"
@@ -30,7 +29,7 @@ func (e *Engine) preflight(it *Item) *state.Package {
 		it.fail(fmt.Errorf("%s is not installed", it.Package))
 		return nil
 	}
-	it.From, it.Dir = rec.Version, rec.Dir
+	it.From, it.Dir, it.Shared = rec.Version, rec.Dir, rec.SharedDir
 	if err := e.tidy(it.Package); err != nil {
 		it.fail(err)
 		return nil
@@ -39,18 +38,21 @@ func (e *Engine) preflight(it *Item) *state.Package {
 		it.fail(err)
 		return nil
 	}
-	procs, err := e.cfg.Running(rec.Dir)
+	var own []string
+	if rec.SharedDir {
+		var err error
+		if own, err = e.ownFiles(rec); err != nil {
+			it.fail(fmt.Errorf("the installed version's manifest: %w", err))
+			return nil
+		}
+	}
+	procs, err := e.running(rec.Dir, rec.SharedDir, own)
 	if err != nil {
 		it.fail(fmt.Errorf("checking for running programs: %w", err))
 		return nil
 	}
 	if len(procs) > 0 {
-		var names []string
-		for _, p := range procs {
-			names = append(names, fmt.Sprintf("%s (pid %d)", filepath.Base(p.Path), p.PID))
-		}
-		it.Action, it.Result = ActNone, ResultSkipped
-		it.Reason = "running: " + strings.Join(names, ", ") + "; close it and run again"
+		skipRunning(it, procs)
 		return nil
 	}
 	return rec
@@ -113,7 +115,18 @@ func (e *Engine) rollback(ctx context.Context, name string) (*Item, error) {
 		target.Rejected = append(target.Rejected, rec.Version)
 	}
 
-	if err := e.change(ctx, it, &target, nil, inverse(l)); err != nil {
+	ops := inverse(l)
+	var placed []string
+	for _, o := range ops {
+		if o.kind == opPlace {
+			placed = append(placed, o.path)
+		}
+	}
+	if err := e.ownedByOthers(name, rec.Dir, placed); err != nil {
+		it.fail(err)
+		return it, nil
+	}
+	if err := e.change(ctx, it, &target, nil, ops); err != nil {
 		if errors.Is(err, errCrash) {
 			return it, err
 		}
@@ -174,6 +187,17 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 	// A rollback record with no state pointer to it is what an --overlay install keeps of the files
 	// it overwrote (decision 1 of the M5 bug check); the remove discards it, so say so.
 	overlay := rec.Previous == nil && journal.Exists(e.cfg.Paths.Previous(name))
+	// A shared folder is never deleted whole, and a package in one must know its own files.
+	switch {
+	case rec.SharedDir && rec.Manifest == "":
+		it.fail(fmt.Errorf("%s was recorded without a file list in %s, a shared folder (shared_dir), so its files "+
+			"cannot be told from the others there; nothing was removed", name, rec.Dir))
+		return it, nil
+	case rec.SharedDir && o.DeleteDir:
+		it.fail(fmt.Errorf("%s is a shared folder (shared_dir), so --delete-dir is refused: it would delete what other "+
+			"packages and you keep there; without it, remove deletes only the files of %s", rec.Dir, name))
+		return it, nil
+	}
 	pkg := e.cfg.Packages.Packages[name]
 	if pkg != nil {
 		if err := e.hookMust(ctx, it, pkg, pkgfile.PreRemove); err != nil {
@@ -227,7 +251,10 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 			return it, nil
 		}
 	}
-	if overlay {
+	switch {
+	case overlay && rec.SharedDir:
+		it.notef("discarded the backups of the files its install replaced in the shared folder (%s)", e.cfg.Paths.Previous(name))
+	case overlay:
 		it.notef("discarded the backups of the files the --overlay install overwrote (%s)", e.cfg.Paths.Previous(name))
 	}
 	it.Result = ResultRemoved

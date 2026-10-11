@@ -155,10 +155,35 @@ is logged with code `hash-override` and recorded as `verified_by = ["hash-overri
 file cannot carry one. `--locked` mismatches need it too. Writing it into the lock is M6.
 
 **Preflight** (nothing is written until all pass): an unfinished journal, a running program whose
-executable lies in the install folder (`proc`, by path, not name; result `skipped`, not a failure:
+executable lies in the install folder (in a shared folder: one of the package's own files, see
+below) (`proc`, by path, not name; result `skipped`, not a failure:
 an open app is normal for a scheduled run), and free space when the asset size is known (three
 times the download plus 64 MiB; the real guarantee is that running out at any later point cleans
 up).
+
+**Shared folders** (`shared_dir`, ADR 0011; decision 2 of the M5 bug check, built in M7). A
+folder such as `~/.local`, where several packages and the user keep files:
+
+- a first install does not need it empty (no `--overlay`); files it replaces are backed up as for
+  `--overlay`, and that record is kept, and announced on remove, the same way;
+- its top-level folders (`bin`, `share`) are never in a manifest, so no remove takes them away,
+  even when the package's install created them (CraftWerk never removed its prefix's own);
+- `remove --delete-dir` is refused, and so is a remove of a record without a file list;
+  `adopt` there needs `--verify` (otherwise the package could never be removed);
+- only a program started from one of the package's own files (installed version, rollback target,
+  and for an update the new version's) holds up a change: one app running from `~/.local/bin`
+  does not stop the other eleven. For an update that check moves after staging, where the new
+  file list is known;
+- the record says `shared_dir: true` in `state.json`, so remove and rollback treat the folder as
+  shared even if the package file changes; a package once installed shared stays shared.
+
+**No two packages own a file** (decided with the user while planning M7). Before an install,
+update or rollback touches anything, the files it would place are compared (ignoring case, as the
+executor does) with the file lists of every other package installed in the same folder; a match
+fails the item with the paths and the owner, and nothing changes. Otherwise removing either
+package would delete the other's file. It applies to any folder two packages share, not only
+`shared_dir` ones (two packages can share one through `--overlay`). A package recorded without a
+file list cannot be compared and is not.
 
 **Parked decisions from the bug checks (plan E.9), decided with the user 2026-10-10:**
 

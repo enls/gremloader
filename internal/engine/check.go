@@ -52,6 +52,14 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 		it.fail(fmt.Errorf("there is nothing to adopt in %s", dir))
 		return it
 	}
+	// In a shared folder only the release itself says which files are this package's; without
+	// that list the package could never be removed (a shared folder is not deleted whole).
+	shared := pkg.SharedDir(e.cfg.Platform.OS)
+	if shared && !o.Verify {
+		it.fail(fmt.Errorf("%s installs into %s, a shared folder (shared_dir): `gremloader adopt %s --verify` "+
+			"compares it with the release and records which files are its own", name, dir, name))
+		return it
+	}
 
 	v, err := e.adoptVersion(pkg.Name, o, dir)
 	if err != nil {
@@ -60,7 +68,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 	}
 	it.To = v
 	now := e.now()
-	rec := &state.Package{Version: v, Dir: dir, InstalledAt: &now, Adopted: true}
+	rec := &state.Package{Version: v, Dir: dir, InstalledAt: &now, Adopted: true, SharedDir: shared}
 
 	if o.Verify {
 		fit, st, err := e.fetchVersion(ctx, name, v)
@@ -75,7 +83,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 				"`adopt --version %s` trusts what is there instead", dir, v, describeDiff(missing, modified), v))
 			return it
 		}
-		m := manifestOf(st.ar, dir, nil)
+		m := manifestOf(st.ar, dir, nil, shared)
 		rec.Tag, rec.Asset, rec.AssetSHA256, rec.VerifiedBy = fit.Release.Tag, fit.Asset.Name, st.got.SHA256, st.levels
 		rec.Manifest = state.ManifestRel(name, v)
 		p := state.Path(e.cfg.Paths.State, rec.Manifest)

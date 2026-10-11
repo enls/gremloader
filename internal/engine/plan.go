@@ -112,6 +112,8 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 		return it
 	}
 	it.Dir = dir
+	// Once installed into a shared folder, always treated as one: that is the safe direction.
+	it.Shared = pkg.SharedDir(e.cfg.Platform.OS) || rec != nil && rec.SharedDir
 	if rec != nil && rec.Version != "" && rec.Dir != dir {
 		// Moving an install is not something an update does. Keep working where it is.
 		it.notef("the package file now says %s; the install stays in %s", dir, rec.Dir)
@@ -305,7 +307,8 @@ func (e *Engine) checkVerifiable(it *Item, pkg *pkgfile.Package) error {
 }
 
 // checkInstallDir applies P3-4 to a fresh install: an existing non-empty folder that GremLoader
-// does not manage is refused without --overlay, and a missing parent needs --create-dir.
+// does not manage is refused without --overlay (a shared folder is expected to hold other
+// things), and a missing parent needs --create-dir.
 func checkInstallDir(it *Item) error {
 	fi, err := os.Stat(it.Dir)
 	switch {
@@ -324,11 +327,11 @@ func checkInstallDir(it *Item) error {
 	if err != nil {
 		return err
 	}
-	if len(ents) > 0 && !it.Overlay {
+	if len(ents) > 0 && !it.Overlay && !it.Shared {
 		return fmt.Errorf("the folder %s is not empty and GremLoader did not install it; "+
 			"`gremloader adopt %s` records what is there, --overlay installs over it", it.Dir, it.Package)
 	}
-	if len(ents) > 0 {
+	if len(ents) > 0 && !it.Shared {
 		it.notef("installing over the existing contents of %s (--overlay); the files it overwrites are backed up, "+
 			"but kept only until the next update or remove of %s", it.Dir, it.Package)
 	}

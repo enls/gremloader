@@ -178,6 +178,7 @@ type Item struct {
 	LockSize  int64
 	Overlay   bool // installing into a non-empty folder that GremLoader does not manage (--overlay)
 	CreateDir bool // the install folder's parent is missing and may be created (--create-dir)
+	Shared    bool // the install folder is shared with other packages and the user (shared_dir)
 	// Override is set when --accept-sha256 let a download through: what gremloader.lock should
 	// record for this platform if it names the package at this version (lock.File.Override).
 	Override *lock.Asset

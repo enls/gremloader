@@ -110,6 +110,9 @@ func TestValidation(t *testing.T) {
 		"latest seen bad":         func(p *Package) { p.LatestSeen.Version = "" },
 		"huge last error":         func(p *Package) { p.LastError = strings.Repeat("x", 5000) },
 		"details without version": func(p *Package) { p.Version = "" },
+		"shared without version": func(p *Package) {
+			*p = Package{SharedDir: true}
+		},
 	}
 	for name, mutate := range cases {
 		p := installed()
