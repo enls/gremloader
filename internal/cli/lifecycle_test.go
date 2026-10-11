@@ -39,6 +39,17 @@ func TestRemoveIsConfirmed(t *testing.T) {
 	}
 }
 
+// A package neither in the package file nor installed is unknown: exit 4 (ADR 0013), as for verify,
+// install and the rest.
+func TestUnknownPackageIsUsage(t *testing.T) {
+	r := atV2(t)
+	for _, line := range [][]string{{"remove", "nope", "--yes"}, {"rollback", "nope", "--yes"}, {"repair", "--forget", "nope", "--yes"}} {
+		if code, out, errOut := r.run(line...); code != exitcode.Usage || !strings.Contains(out+errOut, "nope") {
+			t.Errorf("%q: exit %d, want 4\n%s%s", line, code, out, errOut)
+		}
+	}
+}
+
 func TestRollback(t *testing.T) {
 	r := atV2(t)
 	if code, _, _ := r.run("rollback", "app"); code != exitcode.Usage || r.appExe() != "2" {

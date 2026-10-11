@@ -116,6 +116,16 @@ type session struct {
 	lock *runlock.Lock
 }
 
+// known reports whether name is a package this run can act on: in the package file, in state.json,
+// or left with a journal by an interrupted change. Anything else is an unknown package (exit 4).
+func (s *session) known(name string) bool {
+	if s.cfg.Packages[name] != nil || s.e.State().Packages[name] != nil {
+		return true
+	}
+	_, err := os.Stat(s.paths.Journal(name))
+	return err == nil
+}
+
 func (s *session) close() {
 	_ = s.log.Close()
 	_ = s.lock.Release()

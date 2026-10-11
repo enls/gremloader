@@ -44,6 +44,9 @@ func defineRemove(fs *flag.FlagSet) func(*call, []string) int {
 		}
 		return c.withEngine(func(s *session) int {
 			name := args[0]
+			if !s.known(name) {
+				return c.failf(exitcode.Usage, "package %q is not in %s and not installed", name, s.file)
+			}
 			if rec := s.e.State().Packages[name]; rec != nil && rec.Version != "" {
 				it := &engine.Item{Package: name, Action: engine.ActRemove, Result: engine.ResultPending, From: rec.Version, Dir: rec.Dir}
 				if *deleteDir && rec.Manifest == "" {
@@ -65,6 +68,9 @@ func defineRollback(*flag.FlagSet) func(*call, []string) int {
 		}
 		return c.withEngine(func(s *session) int {
 			name := args[0]
+			if !s.known(name) {
+				return c.failf(exitcode.Usage, "package %q is not in %s and not installed", name, s.file)
+			}
 			if rec := s.e.State().Packages[name]; rec != nil && rec.Version != "" && rec.Previous != nil {
 				it := &engine.Item{Package: name, Action: engine.ActRollback, Result: engine.ResultPending, From: rec.Version,
 					To: rec.Previous.Version, Dir: rec.Dir}
@@ -203,6 +209,9 @@ func defineRepair(fs *flag.FlagSet) func(*call, []string) int {
 					return exitcode.OK
 				}
 				return c.done(items...)
+			}
+			if !s.known(*forget) {
+				return c.failf(exitcode.Usage, "package %q is not in %s and not installed", *forget, s.file)
 			}
 			it := &engine.Item{Package: *forget, Result: engine.ResultPending, Action: "forget",
 				Reason: "give up its interrupted change without finishing or undoing it"}
