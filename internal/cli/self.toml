@@ -1,0 +1,22 @@
+# The package `gremloader self-update` installs: GremLoader itself (ADR 0015). It is built into the
+# binary and read by the ordinary package-file parser; {root} is the folder of the running binary.
+schema_version = 1
+
+[package.gremloader]
+repo       = "enls/gremloader"
+checksums  = "SHA256SUMS.txt"
+dir        = "{root}"
+shared_dir = true
+strip      = "auto"
+
+# The archives scripts/build-release.sh produces.
+[package.gremloader.asset]
+"windows/amd64" = "gremloader-{version}-windows-amd64.zip"
+"windows/arm64" = "gremloader-{version}-windows-arm64.zip"
+"linux/amd64"   = "gremloader-{version}-linux-amd64.tar.gz"
+"linux/arm64"   = "gremloader-{version}-linux-arm64.tar.gz"
+
+# Built by our own release workflow, or not installed.
+[package.gremloader.verify]
+require         = ["checksum", "attestation"]
+signer_workflow = ".github/workflows/release.yml"
