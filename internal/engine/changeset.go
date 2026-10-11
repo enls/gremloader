@@ -164,7 +164,7 @@ func (x *executor) place(o op) error {
 	// not it arrived, a backed-up one restored), and finishing forward goes by the "state" step.
 	// Leaving it out halves the flushes per file.
 	x.want(o.path)
-	if err := placeFile(o.src, p, o.move); err != nil {
+	if err := placeFile(o.src, p, o.move, func() error { return x.e.at("place") }); err != nil {
 		return fmt.Errorf("placing %s: %w", p, err)
 	}
 	return nil
@@ -223,6 +223,9 @@ func (e *Engine) undo(l *journal.Log) error {
 	dir := l.Begin().Dir
 	abs := func(rel string) string { return filepath.Join(dir, filepath.FromSlash(rel)) }
 	var errs []error
+	if err := removeTemps(dir, l); err != nil {
+		errs = append(errs, err)
+	}
 	for _, r := range slices.Backward(l.Records) {
 		if err := e.at("undo"); err != nil {
 			if errors.Is(err, errCrash) {
@@ -249,6 +252,38 @@ func (e *Engine) undo(l *journal.Log) error {
 		case journal.OpRmdir:
 			if err := os.MkdirAll(abs(r.Path), 0o755); err != nil { //nolint:gosec // G301: as above
 				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// removeTemps deletes the temporary files placeFile leaves beside a file the journal touched when
+// the process dies between filling one and renaming it into place. They are not journaled (that
+// would cost a flush per file); each folder is read once.
+func removeTemps(dir string, l *journal.Log) error {
+	beside := map[string]map[string]bool{} // folder -> names of files the journal touched there
+	for _, r := range l.Records {
+		switch r.Op {
+		case journal.OpCreated, journal.OpBackup, journal.OpRemoved:
+			parent, base := filepath.Split(filepath.Join(dir, filepath.FromSlash(r.Path)))
+			if beside[parent] == nil {
+				beside[parent] = map[string]bool{}
+			}
+			beside[parent][base] = true
+		}
+	}
+	var errs []error
+	for parent, names := range beside {
+		ents, err := os.ReadDir(parent)
+		if err != nil {
+			continue // a folder that is not there holds no temporary files
+		}
+		for _, e := range ents {
+			if base, ok := tempOf(e.Name()); ok && names[base] && e.Type().IsRegular() {
+				if err := remove(filepath.Join(parent, e.Name())); err != nil {
+					errs = append(errs, err)
+				}
 			}
 		}
 	}

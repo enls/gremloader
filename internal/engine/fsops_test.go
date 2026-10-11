@@ -71,7 +71,7 @@ func TestPlaceAcrossVolumes(t *testing.T) {
 		return os.Rename(from, to)
 	}
 	t.Cleanup(func() { osRename = os.Rename })
-	if err := placeFile(src, dst, true); err != nil {
+	if err := placeFile(src, dst, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, dst) != "new" || calls != 2 {
@@ -92,7 +92,7 @@ func TestPlaceWithoutMoveKeepsTheSource(t *testing.T) {
 	src, dst := filepath.Join(d, "saved"), filepath.Join(d, "app.exe")
 	write(t, src, "v1")
 	write(t, dst, "v2")
-	if err := placeFile(src, dst, false); err != nil {
+	if err := placeFile(src, dst, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, dst) != "v1" || read(t, src) != "v1" {

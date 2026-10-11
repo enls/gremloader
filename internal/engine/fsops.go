@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -104,7 +105,7 @@ func copyFile(src, dst string) (err error) {
 // missing or half-written. With move, src may be consumed (a staged file); otherwise src is left
 // as it is (a saved file in previous/ that must survive until the change commits). When src and
 // dst are on different volumes, the bytes go to a temporary name beside dst first (P3-20).
-func placeFile(src, dst string, move bool) error {
+func placeFile(src, dst string, move bool, mid func() error) error {
 	if move {
 		err := rename(src, dst)
 		if err == nil || !isCrossDevice(err) {
@@ -118,6 +119,14 @@ func placeFile(src, dst string, move bool) error {
 	if err := linkOrCopy(src, tmp); err != nil {
 		return err
 	}
+	if mid != nil {
+		if err := mid(); err != nil {
+			if !errors.Is(err, errCrash) {
+				_ = os.Remove(tmp)
+			}
+			return err
+		}
+	}
 	if err := rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp)
 		return err
@@ -126,6 +135,21 @@ func placeFile(src, dst string, move bool) error {
 		_ = os.Remove(src)
 	}
 	return nil
+}
+
+// tempOf reports the file a name made by tempName stands beside.
+func tempOf(name string) (base string, ok bool) {
+	stem, ok1 := strings.CutPrefix(name, ".")
+	stem, ok2 := strings.CutSuffix(stem, ".tmp")
+	i := strings.LastIndex(stem, ".gremloader-")
+	if !ok1 || !ok2 || i < 0 {
+		return "", false
+	}
+	n := stem[i+len(".gremloader-"):]
+	if n == "" || strings.Trim(n, "0123456789") != "" {
+		return "", false
+	}
+	return stem[:i], true
 }
 
 // tempName is an unused name beside path, recognisable as GremLoader's.

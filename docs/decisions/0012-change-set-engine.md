@@ -39,6 +39,9 @@ undo can recognise a file already moved back and rollback can refuse a damaged b
 program costs one sequential read per update; corrected by the M5 bug check, which first said
 "costs nothing"). Across volumes it is a flushed copy, and a new file is copied to a
 temporary name beside the target and renamed over it, so the replace is still one step (P3-20).
+That temporary file (`.<name>.gremloader-N.tmp`, also used by every rollback) is not journaled;
+undo deletes any it finds beside a file the journal touched (found by the M5 bug check: a crash
+between the copy and the rename left one in the install folder).
 A file that another program holds open for a moment (antivirus, Explorer's preview) is retried five
 times over about three seconds (P3-13).
 

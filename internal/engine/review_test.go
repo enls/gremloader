@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -262,5 +263,45 @@ func TestDeleteDirWithTheDriveAway(t *testing.T) {
 	}
 	if v := r.state().Packages["app"].Version; v != "1.0.0" {
 		t.Errorf("state says %q", v)
+	}
+}
+
+// Bug check of M5 (sub-agent finding 5): across volumes a file is copied to a temporary name beside
+// its target and renamed over it. That temporary file is not journaled, so a failure or a crash
+// between the two must still leave exactly the old or the new version. Here every rename out of
+// staging is refused as cross-device, and the update is swept like rollback and remove.
+func TestUpdateAcrossVolumesUnderFailuresAndCrashes(t *testing.T) {
+	staging := string(filepath.Separator) + "staging" + string(filepath.Separator)
+	osRename = func(from, to string) error {
+		if strings.Contains(from, staging) {
+			return errCrossDevice
+		}
+		return os.Rename(from, to)
+	}
+	t.Cleanup(func() { osRename = os.Rename })
+	sweep(t, atV1, func(e *Engine) (*Item, error) {
+		p, err := e.Plan(context.Background(), Request{})
+		if err != nil {
+			return nil, err
+		}
+		err = e.Apply(context.Background(), p, ApplyOptions{})
+		return p.Items[0], err
+	}, v1Tree, v2Tree, nil)
+}
+
+func TestTempOf(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "app.v2.exe")
+	tmp, err := tempName(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base, ok := tempOf(filepath.Base(tmp)); !ok || base != "app.v2.exe" {
+		t.Errorf("tempOf(%q) = %q, %v", filepath.Base(tmp), base, ok)
+	}
+	for _, name := range []string{"app.exe", ".app.exe.gremloader-.tmp", ".app.exe.gremloader-1a.tmp",
+		"app.exe.gremloader-1.tmp", ".app.exe.gremloader-1.tmpx", ".gremloader-1.tmp"} {
+		if base, ok := tempOf(name); ok && base != "" {
+			t.Errorf("tempOf(%q) = %q, true", name, base)
+		}
 	}
 }
