@@ -119,4 +119,13 @@ func TestOfflineIsExit7(t *testing.T) {
 	if code != exitcode.Offline {
 		t.Errorf("exit %d, want 7\n%s%s", code, out.String(), errb.String())
 	}
+
+	// A disabled package was not resolved either: it does not turn offline into an ordinary failure.
+	r.writeFile(appFile + "\n[package.other]\nrepo = \"o/other\"\nasset = \"other.zip\"\nverify = { require = [] }\ndir = \"{root}/Other\"\nenabled = false\n")
+	out.Reset()
+	errb.Reset()
+	code = runWith([]string{"check", "--root", r.root}, IO{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errb}, d)
+	if code != exitcode.Offline {
+		t.Errorf("with a disabled package: exit %d, want 7\n%s%s", code, out.String(), errb.String())
+	}
 }

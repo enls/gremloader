@@ -200,6 +200,9 @@ func (p *Plan) Pending() bool {
 	return false
 }
 
+// reasonDisabled is the reason of a package skipped because the package file disables it.
+const reasonDisabled = "disabled"
+
 // ExitCode is the run's exit code (plan E.4): the worst failure, else 2 when check-style output
 // found something to do (updates), else 0.
 func (p *Plan) ExitCode(updatesAvailable bool) int {
@@ -216,6 +219,8 @@ func (p *Plan) ExitCode(updatesAvailable bool) int {
 			offline = true
 		case it.Result == ResultFailed:
 			codes = append(codes, exitcode.Failed)
+		case it.Result == ResultSkipped && it.Reason == reasonDisabled:
+			// Never looked up: it says nothing about whether GitHub could be reached.
 		default:
 			resolved = true
 		}

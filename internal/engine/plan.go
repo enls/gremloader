@@ -98,7 +98,7 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 		it.From = rec.Version
 	}
 	if !pkg.Enabled {
-		it.Result, it.Reason = ResultSkipped, "disabled"
+		it.Result, it.Reason = ResultSkipped, reasonDisabled
 		return it
 	}
 	if err := e.unfinished(name); err != nil {

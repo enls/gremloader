@@ -65,7 +65,7 @@ func (e *Engine) lockOne(ctx context.Context, name, want string) (*Item, *lock.P
 	pkg := e.cfg.Packages.Packages[name]
 	it := &Item{Package: name}
 	if !pkg.Enabled {
-		it.Result, it.Reason = ResultSkipped, "disabled"
+		it.Result, it.Reason = ResultSkipped, reasonDisabled
 		return it, nil
 	}
 	q := e.query(name, pkg)
