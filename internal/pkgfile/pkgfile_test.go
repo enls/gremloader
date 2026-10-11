@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -359,6 +360,31 @@ func TestRequiredKeys(t *testing.T) {
 	if len(c.Warnings) != 1 || !strings.Contains(c.Warnings[0], "without any verification") {
 		t.Errorf("warnings = %q", c.Warnings)
 	}
+}
+
+// verify.signer_workflow (ADR 0014): a workflow file of the package's repository, from a preset or
+// the package; requiring an attestation while turning the check off is a contradiction.
+func TestVerifyAttestationKeys(t *testing.T) {
+	base := "schema_version = 1\n[preset.p]\nverify = { signer_workflow = \".github/workflows/release.yml\" }\n" +
+		"[package.x]\nuse = \"p\"\nrepo = \"o/x\"\nasset = \"x.zip\"\ndir = \"/x\"\nchecksums = \"SUMS\"\n"
+	p := mustLoad(t, base, "").Packages["x"]
+	if p.SignerWorkflow != ".github/workflows/release.yml" || p.Attestation != "if-present" {
+		t.Errorf("%q %q", p.SignerWorkflow, p.Attestation)
+	}
+	if !slices.ContainsFunc(p.Explain(), func(s Setting) bool {
+		return s.Key == "verify.signer_workflow" && s.Value == `".github/workflows/release.yml"`
+	}) {
+		t.Errorf("explain: %+v", p.Explain())
+	}
+	if p := mustLoad(t, base+"verify.signer_workflow = \".github/workflows/ci.yaml@refs/heads/main\"\n", "").Packages["x"]; p.SignerWorkflow != ".github/workflows/ci.yaml@refs/heads/main" {
+		t.Errorf("package over preset: %q", p.SignerWorkflow)
+	}
+	for _, w := range []string{"release.yml", ".github/workflows/a/b.yml", ".github/workflows/../x.yml", ".github/workflows/x.txt", "", ".github/workflowsXrelease.yml", "Xgithub/workflows/r.yml", ".github/workflows/rXyml"} {
+		_, err := load(t, base+"verify.signer_workflow = \""+w+"\"\n", "", Options{})
+		wantProblem(t, err, 0, "signer_workflow", "is not .github/workflows")
+	}
+	_, err := load(t, base+"verify = { require = [\"checksum\", \"attestation\"], attestation = \"off\" }\n", "", Options{})
+	wantProblem(t, err, 0, "verify.attestation", `verify.require includes "attestation"`)
 }
 
 func TestValueRules(t *testing.T) {

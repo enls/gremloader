@@ -25,6 +25,7 @@ type Package struct {
 	Checksums       Template
 	VerifyRequire   []string // subset of checksum, digest, attestation
 	Attestation     string   // "if-present" | "off"
+	SignerWorkflow  string   // the workflow that must have built a release (verify.signer_workflow); "" = any in Repo
 	Strip           archive.Strip
 	Pin             string // a version, normalised; "" = none
 	Hold            bool
@@ -72,6 +73,9 @@ func (p *Package) check(s *src, key []string) {
 	}
 	if slices.Contains(p.VerifyRequire, "checksum") && p.Checksums.IsZero() {
 		s.problem(at("checksums"), `missing, but verify.require includes "checksum" (name the release's checksum file, or set verify.require = [] to install unverified)`)
+	}
+	if slices.Contains(p.VerifyRequire, "attestation") && p.Attestation == "off" {
+		s.problem(at("verify", "attestation"), `"off", but verify.require includes "attestation"`)
 	}
 	for _, pl := range p.platforms {
 		if _, ok := asset.get(pl.String()); !ok {
@@ -273,6 +277,7 @@ func (p *Package) Explain() []Setting {
 	add(kChecksums, q(p.Checksums.String()))
 	add(kVerifyRequire, list(p.VerifyRequire))
 	add(kVerifyAttest, q(p.Attestation))
+	add(kVerifySigner, q(p.SignerWorkflow))
 	p.explainKeyed(&out, kDir)
 	if p.keyed[kSharedDir] == nil {
 		add(kSharedDir, "false")
