@@ -114,3 +114,12 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   Decided with the user (2026-10-11): an inline `sh -c` in the package file, so there is nothing
   extra to place on each machine. Its cost: no braces in the script (hook arguments are
   templates; `{{`/`}}` would escape them) and at most 1024 bytes.
+- **Allowing only `tmaproduction.blob.core.windows.net` for attestation bundles.** Offered as the
+  default; the user chose `*.blob.core.windows.net` (2026-10-11): a rename on GitHub's side would
+  otherwise break every check, and the bundle is verified cryptographically. The wildcard is for
+  the bundle fetch only, never for assets. See ADR 0014.
+- **A signer-workflow pin as the default attestation identity.** Every package file would need the
+  workflow's path before it counted as attested. Chosen: the `gh --repo` identity, with an optional
+  `verify.signer_workflow`. See ADR 0014.
+- **Counting GitHub's release attestation as "attested".** It says the asset belongs to a release,
+  not how it was built, and needs GitHub's own TUF root. Skipped, not failed. See ADR 0014.
