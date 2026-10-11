@@ -112,8 +112,11 @@ func TestYesIsNotASafetyFlag(t *testing.T) {
 		if r.appExe() != "2" || code != exitcode.Failed || !strings.Contains(out, "failed") || !strings.Contains(out, "--allow-downgrade") {
 			t.Fatalf("without --allow-downgrade: exit %d, app %q\n%s", code, r.appExe(), out)
 		}
-		if code, out, _ := r.run("update", "app", "--version", "1.0.0", "--yes", "--allow-downgrade"); code != exitcode.OK || r.appExe() != "1" {
+		if code, out, _ := r.run("update", "app", "--version", "1.0.0", "--yes", "--allow-downgrade"); code != exitcode.OK || r.appExe() != "1" || !strings.Contains(out, "downgraded") {
 			t.Fatalf("with --allow-downgrade: exit %d\n%s", code, out)
+		}
+		if code, out, _ := r.run("update", "app", "--yes", "--force", "--version", "1.0.0"); code != exitcode.OK || !strings.Contains(out, "reinstalled") {
+			t.Fatalf("--force: exit %d\n%s", code, out)
 		}
 	})
 	t.Run("hash", func(t *testing.T) {

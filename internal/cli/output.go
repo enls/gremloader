@@ -115,6 +115,14 @@ func status(it *engine.Item) string {
 		s = string(it.Action)
 	case engine.ResultUnchanged:
 		s = "up to date"
+	case engine.ResultUpdated:
+		// The result says only that the new files are in; the action says which way (JSON keeps both).
+		switch it.Action {
+		case engine.ActDowngrade:
+			s = "downgraded"
+		case engine.ActReinstall:
+			s = "reinstalled"
+		}
 	}
 	if it.Reason != "" {
 		s += ": " + it.Reason
