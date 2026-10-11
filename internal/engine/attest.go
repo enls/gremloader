@@ -45,8 +45,8 @@ func (e *Engine) attestation(ctx context.Context, it *Item, pkg *pkgfile.Package
 		if required {
 			return false, fmt.Errorf("%s: verify.require lists attestation, and it could not be checked: %w", it.Package, err)
 		}
-		if regErr := e.attestationRegression(it, o, "could not be checked for one ("+redact.Text(err.Error())+")"); regErr != nil {
-			return false, regErr
+		if rec := e.installed(it.Package); rec != nil && rec.Attested {
+			return false, e.attestationRegression(it, o, "could not be checked for one ("+redact.Text(err.Error())+")")
 		}
 		it.notef("attestation not checked: %s", redact.Text(err.Error()))
 		return false, nil

@@ -142,7 +142,8 @@ func TestAttestationRegression(t *testing.T) {
 
 			p, err := r.applyWith(r.engine(), Request{}, ApplyOptions{AllowAttestationRegression: true})
 			it = item(t, p, "app")
-			if err != nil || it.Result != ResultUpdated || !slices.ContainsFunc(it.Notes, func(n string) bool { return strings.Contains(n, "regression allowed") }) {
+			// One note says it all (the manual run printed the unreachable cause twice).
+			if err != nil || it.Result != ResultUpdated || len(it.Notes) != 1 || !strings.Contains(it.Notes[0], "regression allowed") {
 				t.Fatalf("allowed: %+v %v", it, err)
 			}
 			if rec := r.state().Packages["app"]; rec.Version != "2.0.0" || rec.Attested {
