@@ -39,3 +39,9 @@ by GitHub's own Sigstore instance, one bundle listing all 23 assets), not build 
 Facts these fixtures pin down (see the Phase 1 plan, E.8): GitHub release assets carry `digest`
 and `state`; the author's `SHA256SUMS.txt` and GitHub's `digest` agree for every PhotoCraft
 asset (checked by a test); Craft apps publish no attestations, cli/cli does.
+
+## Added for M9 (captured 2026-10-11)
+
+| Path | Origin | Notes |
+|---|---|---|
+| `gremloader-v0.0.2-rc.1/gremloader-0.0.2-rc.1-windows-amd64.zip.provenance.sn` | the `bundle_url` of `GET api.github.com/repos/enls/gremloader/attestations/sha256:d47dcd96...dea7` (our own release v0.0.2-rc.1, windows/amd64 zip, still a draft), as returned | **Build provenance**, snappy block format, SAN `https://github.com/enls/gremloader/.github/workflows/release.yml@refs/tags/v0.0.2-rc.1`. The only item: a draft has no release attestation. Ties self-update's built-in policy (ADR 0015) to what our release workflow really publishes. The zip is not kept: tests use its digest |
