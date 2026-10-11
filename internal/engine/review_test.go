@@ -413,3 +413,51 @@ func TestQuarantineGoesWhenItIsAnswered(t *testing.T) {
 		t.Error("the quarantine is still there after the package was removed")
 	}
 }
+
+// Installing some other version leaves the quarantine of the one that failed: its question is
+// still open.
+func TestQuarantineStaysForAnotherVersion(t *testing.T) {
+	r := atV1(t)
+	r.publishBadSums("3.0.0")
+	r.apply(r.engine(), Request{})
+	if qi, ok := r.quarantineInfo(); !ok || qi.Version != "3.0.0" {
+		t.Fatalf("quarantine = %+v", qi)
+	}
+	if it := item(t, r.apply(r.engine(), Request{Packages: []string{"app"}, Want: "2.0.0"}), "app"); it.Result != ResultUpdated {
+		t.Fatalf("installing 2.0.0: %+v (%v)", it, it.Err)
+	}
+	if qi, ok := r.quarantineInfo(); !ok || qi.Version != "3.0.0" {
+		t.Errorf("the 3.0.0 quarantine went when 2.0.0 was installed: %+v", qi)
+	}
+}
+
+// A journal whose state records are about another folder than the journal itself is not acted
+// on: finishing it forward would record the package at that folder.
+func TestRepairChecksTheJournalsFolder(t *testing.T) {
+	r := atV1(t)
+	rec := *r.state().Packages["app"]
+	after := rec
+	after.Version, after.Dir = "2.0.0", filepath.Join(r.root, "Elsewhere")
+	raw, err := json.Marshal(changeRecord{Before: &rec, After: &after})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := journal.Create(r.paths.Journal("app"), journal.Record{Op: journal.OpBegin, ID: "x", Pkg: "app",
+		Action: "update", From: "1.0.0", To: "2.0.0", Dir: r.dir(), TS: time.Now(), Result: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Append(journal.Record{Op: journal.OpStep, Name: "state"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = j.Close()
+
+	for _, ri := range r.engine().Repair() {
+		if ri.Result != ResultNeedsRepair {
+			t.Errorf("repair = %+v (%v)", ri, ri.Err)
+		}
+	}
+	if got := r.state().Packages["app"]; got.Dir != r.dir() || got.Version != "1.0.0" {
+		t.Errorf("state = %s at %s", got.Version, got.Dir)
+	}
+}
