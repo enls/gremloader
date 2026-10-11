@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -187,6 +188,45 @@ func TestUpdateLockAndLocked(t *testing.T) {
 	}
 	if code, _, errOut := r.run("apply", "--locked", "--yes"); code != exitcode.Usage || !strings.Contains(errOut, "gremloader lock") {
 		t.Errorf("--locked without a lock: exit %d, %q", code, errOut)
+	}
+}
+
+// An accepted hash is recorded only when that download was installed: a run that failed after the
+// download leaves the lock as it was, or other machines' --locked runs would trust it.
+func TestOverrideIsNotRecordedWhenTheInstallFailed(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("an open file blocks replacing it only on Windows")
+	}
+	r := newRig(t, appFile)
+	r.publish("1.0.0", 10, archives.F("app.exe", "1"))
+	r.run("install", "app", "--yes", "--update-lock")
+	received := r.publishBadSums("3.0.0")
+	lf, _, _ := lock.Load(r.lockFile())
+	key := platform.Current().String()
+	lp := lf.Packages["app"]
+	lp.Version, lp.Tag = "3.0.0", "v3.0.0"
+	a := lp.Platforms[key]
+	a.Asset, a.SHA256 = "app-3.0.0.zip", strings.Repeat("ab", 32)
+	a.URL = strings.ReplaceAll(a.URL, "1.0.0", "3.0.0")
+	if err := lock.Save(r.lockFile(), lf); err != nil {
+		t.Fatal(err)
+	}
+
+	held, err := os.Open(filepath.Join(r.dir(), "app.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := r.run("update", "app", "--version", "3.0.0", "--accept-sha256", received, "--yes")
+	_ = held.Close()
+	if code != exitcode.Failed || r.appExe() != "1" {
+		t.Fatalf("expected the update to fail: exit %d, app %q\n%s%s", code, r.appExe(), out, errOut)
+	}
+	lf, _, _ = lock.Load(r.lockFile())
+	if got := lf.Packages["app"].Platforms[key]; got.SHA256 == received || got.VerifiedBy == lock.HashOverride {
+		t.Errorf("the failed run recorded its accepted hash: %+v\n%s", got, out)
+	}
+	if strings.Contains(out, "installed with --accept-sha256") {
+		t.Errorf("a failed run says it installed:\n%s", out)
 	}
 }
 

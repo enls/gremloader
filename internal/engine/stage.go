@@ -117,7 +117,7 @@ func (e *Engine) accepted(it *Item, o ApplyOptions, got download.Result) bool {
 	}
 	e.emit(events.Event{Level: events.Warn, Event: "verify.ok", Package: it.Package, Version: it.To, URL: it.Asset.URL,
 		Code: "hash-override", Msg: "accepted " + got.SHA256 + " by --accept-sha256 although it differs from the trusted hash"})
-	it.notef("installed with --accept-sha256 %s: the hash differs from the trusted one", got.SHA256)
+	it.notef("accepted by --accept-sha256 %s: the hash differs from the trusted one", got.SHA256)
 	return true
 }
 

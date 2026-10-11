@@ -236,6 +236,11 @@ func (c *call) recordInLock(ctx context.Context, s *session, p *engine.Plan, upd
 		if it.Override == nil || !found {
 			continue
 		}
+		// Only a download that is now installed: a run that failed after accepting it must not
+		// teach other machines' --locked runs to trust it.
+		if rec := s.e.State().Packages[it.Package]; rec == nil || rec.Version != it.To || rec.AssetSHA256 != it.Override.SHA256 {
+			continue
+		}
 		if f.Override(it.Package, it.To, c.platform(), *it.Override) {
 			it.Notes = append(it.Notes, fmt.Sprintf("%s records the accepted hash, marked verified_by = %q", filepath.Base(path), lock.HashOverride))
 			dirty = true
