@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -242,6 +243,34 @@ func (l *Log) BackupPath(r Record) string {
 func Exists(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, LogName))
 	return err == nil
+}
+
+// Begun reports whether the journal in dir got as far as a complete begin record. A directory
+// without a log, or a log without one complete line, is one Create did not live to finish: nothing
+// was changed under it, and it can be removed. A log that cannot be read counts as begun, so that
+// Read reports it rather than anything removing it.
+func Begun(dir string) bool {
+	f, err := os.Open(filepath.Join(dir, LogName)) //nolint:gosec // G304: as Read
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 4096)
+	for {
+		n, err := f.Read(buf)
+		if bytes.IndexByte(buf[:n], '\n') >= 0 {
+			return true
+		}
+		if errors.Is(err, io.EOF) {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+	}
 }
 
 // Read reads the journal in dir. Every record is checked: a path that leaves the install

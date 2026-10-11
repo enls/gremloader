@@ -1,6 +1,7 @@
 package journal
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -277,5 +278,43 @@ func TestOversizedJournalIsRefused(t *testing.T) {
 	}
 	if _, err := Read(dir); !errors.Is(err, ErrCorrupt) {
 		t.Errorf("err = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestBegun(t *testing.T) {
+	j, dir := create(t)
+	_ = j.Close()
+	full, err := os.ReadFile(logFile(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		log  []byte // nil: no log file
+		want bool
+	}{
+		{"no log", nil, false},
+		{"empty log", []byte{}, false},
+		{"torn begin", full[:len(full)/2], false},
+		{"begin without its newline", full[:len(full)-1], false},
+		{"complete begin", full, true},
+		{"complete begin and a torn record", append(full, `{"op":"cre`...), true},
+		{"a long first line", append(bytes.Repeat([]byte("x"), 10000), '\n'), true},
+	} {
+		d := filepath.Join(t.TempDir(), "j")
+		if err := os.Mkdir(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if c.log != nil {
+			if err := os.WriteFile(logFile(d), c.log, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := Begun(d); got != c.want {
+			t.Errorf("%s: Begun = %v", c.name, got)
+		}
+	}
+	if Begun(filepath.Join(t.TempDir(), "missing")) {
+		t.Error("a missing directory has begun")
 	}
 }

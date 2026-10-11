@@ -208,7 +208,7 @@ func (e *Engine) planOne(ctx context.Context, name string, rq Request) *Item {
 // journal that was not yet promoted is not unfinished: Apply tidies it.
 func (e *Engine) unfinished(name string) error {
 	dir := e.cfg.Paths.Journal(name)
-	if !journal.Exists(dir) {
+	if !journal.Begun(dir) {
 		return nil
 	}
 	l, err := journal.Read(dir)

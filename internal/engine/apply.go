@@ -308,6 +308,13 @@ func (e *Engine) rollbackChange(name string, cause error) error {
 func (e *Engine) tidy(name string) error {
 	jdir, pdir := e.cfg.Paths.Journal(name), e.cfg.Paths.Previous(name)
 	old := pdir + ".old"
+	if _, err := os.Stat(jdir); err == nil && !journal.Begun(jdir) {
+		// Create died before its first record (or failed): nothing changed, and its directory
+		// would make the next Create fail.
+		if err := os.RemoveAll(jdir); err != nil {
+			return err
+		}
+	}
 	if journal.Exists(jdir) {
 		l, err := journal.Read(jdir)
 		if err != nil || !l.Committed() {

@@ -139,3 +139,45 @@ func TestRollbackAfterAReinstall(t *testing.T) {
 	assertTree(t, r.dir(), v2Tree)
 	r.assertClean()
 }
+
+// Bug check of M5 (sub-agent finding 2): journal.Create makes the directory, then the log, then
+// writes the begin record. Dying anywhere in there changed nothing in the install, so neither
+// repair nor the next run may treat it as a damaged journal or trip over it.
+func TestJournalThatNeverBegan(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		log  *string // nil: no log file at all
+	}{
+		{"no log", nil},
+		{"empty log", ptr("")},
+		{"torn begin record", ptr(`{"op":"begin","id":"r1","pkg":"app","act`)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for _, viaRepair := range []bool{true, false} {
+				r := atV1(t)
+				jdir := r.paths.Journal("app")
+				if err := os.MkdirAll(filepath.Join(jdir, "b"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if c.log != nil {
+					if err := os.WriteFile(filepath.Join(jdir, "undo.jsonl"), []byte(*c.log), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if viaRepair {
+					for _, ri := range r.engine().Repair() {
+						if ri.Result != ResultRepaired {
+							t.Errorf("repair = %+v (%v)", ri, ri.Err)
+						}
+					}
+				}
+				// The next run updates as if nothing had happened.
+				if it := item(t, r.apply(r.engine(), Request{}), "app"); it.Result != ResultUpdated {
+					t.Fatalf("repair first %v: update = %+v (%v)", viaRepair, it, it.Err)
+				}
+				assertTree(t, r.dir(), v2Tree)
+				r.assertClean()
+			}
+		})
+	}
+}

@@ -69,7 +69,11 @@ naming the new version over a mostly old folder; found by the M5 bug check, 2026
 `abort` record cannot be written, nothing is undone and repair later finishes forward, or undoes
 when there was no `step state`. Failures while writing the manifest or `state.json` are never
 undone: the files are all in place, so they leave the package for repair, which finishes forward.
-Repair also clears every staging area, since the run lock guarantees none is in use.
+Repair also clears every staging area, since the run lock guarantees none is in use. A journal
+that never got a complete begin record (no log, or no complete line: `journal.Begun`) changed
+nothing and is simply removed, by repair or by the next run's preflight; before the M5 bug check
+it blocked the package as "damaged, needs a look by hand", or made every later run fail on the
+leftover directory.
 
 **Commit, then promote.** After the last operation: `step state`, the manifest, `state.json`, the
 `commit` record. Then the journal becomes the package's rollback record (`previous/<pkg>/`; the
