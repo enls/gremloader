@@ -53,6 +53,7 @@ type call struct {
 	name string
 	io   IO
 	g    *globals
+	d    deps
 }
 
 // usagef reports a wrong command line (exit 4).
@@ -76,6 +77,10 @@ var commands []*command
 
 func init() {
 	commands = []*command{
+		{name: "list", summary: "List packages: installed, latest seen, status (no network)", define: defineList},
+		{name: "check", args: "[package...]", summary: "Look for updates; exit 2 when there are some", define: defineCheck},
+		{name: "explain", args: "<package>", summary: "Show a package's effective settings and where each comes from", define: defineExplain},
+		{name: "log", summary: "Show the event log", define: defineLog},
 		{name: "version", summary: "Print the version and build information", define: defineVersion},
 		{name: "help", args: "[command]", summary: "Show this help, or a command's", define: defineHelp},
 	}
@@ -142,7 +147,9 @@ func commandHelp(w io.Writer, c *command, fs *flag.FlagSet) {
 }
 
 // Run executes one command line (args excludes the program name) and returns the exit code.
-func Run(args []string, io IO) int {
+func Run(args []string, io IO) int { return runWith(args, io, systemDeps()) }
+
+func runWith(args []string, io IO, d deps) int {
 	name, rest, ok := splitCommand(args)
 	if !ok {
 		say(io.Stderr, "%s", usage())
@@ -169,7 +176,7 @@ func Run(args []string, io IO) int {
 		say(io.Stderr, "gremloader %s: %v\nRun \"gremloader %s -h\" for help.\n", name, err, name)
 		return exitcode.Usage
 	}
-	return runCmd(&call{name: name, io: io, g: g}, fs.Args())
+	return runCmd(&call{name: name, io: io, g: g, d: d}, fs.Args())
 }
 
 func defineHelp(*flag.FlagSet) func(*call, []string) int {
