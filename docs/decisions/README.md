@@ -18,5 +18,6 @@ one. Turned-down ideas are filed in [../decided-against.md](../decided-against.m
 | [0010](0010-extractor-policy.md) | What the archive extractor accepts: one policy for both OSes, reject not skip, two passes |
 | [0011](0011-files-and-formats.md) | Files and formats: strict everywhere, layered package file, whitelisted local override, atomic writes, kernel run lock |
 | [0012](0012-change-set-engine.md) | The change-set engine: one journaled executor for every change, undo and repair, rollback from the journal, hash mismatch is a hard failure |
+| [0013](0013-command-line.md) | The command line: one path for every change, confirmation and --yes, exit codes, one JSON object, hooks that end their whole tree, lock writing |
 
 Format: Context, Decision, Reasons, Consequences (and Rejected alternatives where there were any).

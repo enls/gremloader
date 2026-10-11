@@ -64,7 +64,9 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
 - **Leaving hooks out of repair entirely.** Decided with the user (2026-10-11): a change that
   repair finishes forward runs the `post_install`/`post_update` hook the failed run skipped. A
   crash after the commit but before the hook cannot be detected cheaply (nothing may follow the
-  commit record), so that case only gets a note naming the hook to run.
+  commit record), so that case only gets a note naming the hook to run. *(Corrected 2026-10-11,
+  M6: as built and as the decision's build notes said, that case gets no note and no hook; ADR
+  0012 documents it, and that hooks must tolerate a rare double run or miss.)*
 - **Giving up an unfinished journal automatically when its install folder stays missing, or only
   documenting "delete the journal by hand".** Decided with the user (2026-10-11):
   `gremloader repair --forget <pkg>`, with confirmation. An automatic give-up could fire while a
@@ -81,3 +83,17 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   unless the journal recorded the bit. And a user who set read-only may have meant it. The update
   fails as before (exactly the old version), with a message saying the file is read-only and how to
   clear it.
+- **`spf13/cobra` or `pflag` for the command line** (Q14, built in M6). A few dozen lines of
+  pre-sorter on the standard `flag` package give flags anywhere without a dependency. See ADR 0013.
+- **Ending everything a hook started once the hook succeeds** (a Windows job object with
+  kill-on-close). A hook may start a program on purpose; the tree is ended only on a timeout or an
+  interrupt. See ADR 0013.
+- **Taking a confirmation from a stdin that is not a terminal.** The scheduled run's stdin is
+  whatever the scheduler connected; a stray "y" there would apply a plan nobody saw. Without a
+  terminal, changes need `--yes`. See ADR 0013.
+- **Failing the run for a pin below the installed version.** Decided with the user (2026-10-11)
+  that a *requested* version refused without `--allow-downgrade` exits 1; a pin is configuration,
+  and failing it would fail every scheduled run until someone unpinned, so it stays "skipped".
+- **Downloading each platform's asset in `gremloader lock` to hash it when neither the checksum
+  file nor GitHub's digest states its hash.** Up to 150 MB per platform for a command that should
+  be quick; `lock` refuses and says why. See ADR 0011.
