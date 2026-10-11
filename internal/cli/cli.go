@@ -183,12 +183,12 @@ func runWith(args []string, io IO, d deps) int {
 	name, rest, ok := splitCommand(args)
 	if !ok {
 		say(io.Stderr, "%s", usage())
-		return exitcode.Usage
+		return noCommand(io, d, args, "", "no command given")
 	}
 	cmd := lookup(name)
 	if cmd == nil {
 		say(io.Stderr, "gremloader: unknown command %q\n\n%s", name, usage())
-		return exitcode.Usage
+		return noCommand(io, d, args, name, fmt.Sprintf("unknown command %q", name))
 	}
 
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -209,6 +209,15 @@ func runWith(args []string, io IO, d deps) int {
 		return (&call{name: name, io: io, g: g, d: d}).usagef("%v", err)
 	}
 	return runCmd(&call{name: name, io: io, g: g, d: d}, fs.Args())
+}
+
+// noCommand ends a line that names no command it can run: the usage is already on stderr; with
+// --json anywhere on the line, stdout still gets its one object.
+func noCommand(io IO, d deps, args []string, name, msg string) int {
+	if wantsJSON(args) {
+		(&call{name: name, io: io, g: &globals{json: true}, d: d}).writeJSON(jsonOut{Command: name, ExitCode: exitcode.Usage, Error: msg})
+	}
+	return exitcode.Usage
 }
 
 func defineHelp(*flag.FlagSet) func(*call, []string) int {

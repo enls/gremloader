@@ -62,6 +62,24 @@ func TestEveryCommandPrintsOneJSONObject(t *testing.T) {
 	}
 }
 
+// A command line without a command, or with one that does not exist, is a usage error that --json
+// still reports as one object (ADR 0013: every path).
+func TestNoOrUnknownCommandIsJSON(t *testing.T) {
+	r := newRig(t, appFile)
+	for _, line := range [][]string{{"--json"}, {"bogus", "--json"}, {"--json", "--", "bogus"}} {
+		code, out, errOut := r.run(line...)
+		dec := json.NewDecoder(strings.NewReader(out))
+		var res jsonResult
+		if err := dec.Decode(&res); err != nil || dec.More() {
+			t.Errorf("%q: stdout is not one JSON object (%v):\n%s\nstderr: %s", line, err, out, errOut)
+			continue
+		}
+		if code != exitcode.Usage || res.ExitCode != code || res.SchemaVersion != jsonSchema || res.Error == "" {
+			t.Errorf("%q: exit %d, %+v", line, code, res)
+		}
+	}
+}
+
 // --json never mixes human text into stdout, also when a plan is waiting for confirmation.
 func TestJSONStdoutIsOnlyJSON(t *testing.T) {
 	r := newRig(t, appFile)
