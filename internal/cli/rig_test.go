@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
+	"github.com/enls/gremloader/internal/engine"
 	"github.com/enls/gremloader/internal/platform"
 	"github.com/enls/gremloader/internal/proc"
 	"github.com/enls/gremloader/internal/state"
@@ -46,6 +48,17 @@ type rig struct {
 	stdin    string            // what the user types
 	tty      bool              // stdin is a terminal
 	platform platform.Platform // zero: this machine
+	hooks    *recordHooks      // nil: hooks really run
+	// exeVersions is what version_from_exe reads, by the executable's full path.
+	exeVersions map[string]string
+}
+
+// recordHooks records the hooks a run asks for instead of running them.
+type recordHooks struct{ ran []engine.Hook }
+
+func (h *recordHooks) Run(_ context.Context, hk engine.Hook) error {
+	h.ran = append(h.ran, hk)
+	return nil
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -84,20 +97,39 @@ func (r *rig) writeFile(content string) {
 
 func (r *rig) deps() deps {
 	api, _ := url.Parse(r.srv.APIBase())
-	return deps{
-		getenv:    func(k string) string { return r.env[k] },
-		cwd:       func() (string, error) { return r.cwd, nil },
-		home:      filepath.Join(r.root, "userhome"),
-		clock:     r.clock,
-		stdinTTY:  func() bool { return r.tty },
-		apiBase:   r.srv.APIBase(),
-		webBase:   r.srv.WebBase(),
-		policy:    &download.Policy{Hosts: []string{"127.0.0.1"}, TokenHosts: []string{api.Host}, AllowHTTP: true},
-		sleep:     func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
-		running:   func(string) ([]proc.Process, error) { return r.running, nil },
+	d := deps{
+		getenv:   func(k string) string { return r.env[k] },
+		cwd:      func() (string, error) { return r.cwd, nil },
+		home:     filepath.Join(r.root, "userhome"),
+		clock:    r.clock,
+		stdinTTY: func() bool { return r.tty },
+		apiBase:  r.srv.APIBase(),
+		webBase:  r.srv.WebBase(),
+		policy:   &download.Policy{Hosts: []string{"127.0.0.1"}, TokenHosts: []string{api.Host}, AllowHTTP: true},
+		sleep:    func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
+		// As proc.Under does: the programs whose executable lies under dir.
+		running: func(dir string) ([]proc.Process, error) {
+			var out []proc.Process
+			for _, p := range r.running {
+				if strings.HasPrefix(strings.ToLower(p.Path), strings.ToLower(dir)+string(filepath.Separator)) {
+					out = append(out, p)
+				}
+			}
+			return out, nil
+		},
 		freeSpace: func(string) (uint64, error) { return 1 << 50, nil },
 		platform:  r.platform,
+		exeVersion: func(p string) (string, error) {
+			if v, ok := r.exeVersions[p]; ok {
+				return v, nil
+			}
+			return "", errors.New("no version resource")
+		},
 	}
+	if r.hooks != nil {
+		d.hooks = r.hooks
+	}
+	return d
 }
 
 // run runs one command line with --root set, empty stdin.
