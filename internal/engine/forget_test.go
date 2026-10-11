@@ -130,3 +130,35 @@ func TestForgetAnInterruptedInstall(t *testing.T) {
 	}
 	r.assertClean()
 }
+
+// A journal that committed but was not yet moved to previous/ (a crash between the two) is a
+// finished change, not an interrupted one: forgetting it must not throw away the rollback record
+// or claim the folder may be mixed.
+func TestForgetOfACommittedChangeKeepsTheRollbackRecord(t *testing.T) {
+	r := atV1(t)
+	e := r.engine()
+	e.fault = func(point string) error {
+		if point == "promote" {
+			return errCrash
+		}
+		return nil
+	}
+	if err := e.Apply(context.Background(), r.plan(e, Request{}), ApplyOptions{}); !errors.Is(err, errCrash) {
+		t.Fatalf("Apply = %v", err)
+	}
+	if !journal.Exists(r.paths.Journal("app")) {
+		t.Fatal("no journal left by the crash")
+	}
+	it := r.engine().Forget("app")
+	if it.Result != ResultRepaired || it.Err != nil || strings.Contains(it.Reason, "both versions") {
+		t.Errorf("forget = %+v (%v)", it, it.Err)
+	}
+	// Forget itself finished the bookkeeping (Rollback's preflight would otherwise do it).
+	if journal.Exists(r.paths.Journal("app")) || !journal.Exists(r.paths.Previous("app")) {
+		t.Error("the committed journal was not promoted to the rollback record")
+	}
+	if rb := r.engine().Rollback(context.Background(), "app"); rb.Result != ResultRolledBack {
+		t.Fatalf("rollback after forgetting a committed change = %+v (%v)", rb, rb.Err)
+	}
+	assertTree(t, r.dir(), v1Tree)
+}

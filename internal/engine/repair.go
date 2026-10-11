@@ -175,7 +175,8 @@ const ResultForgotten Result = "forgotten"
 // --forget`, decision 5 of the M5 bug check). It is the way out for a journal whose install folder
 // is gone for good, or that cannot be read. The journal and the staging area are deleted. When the
 // recorded install folder is not there, the package is recorded as not installed; when it is,
-// the record stays, and the folder may hold files of both versions.
+// the record stays, and the folder may hold files of both versions. A journal that had committed
+// is not given up: its bookkeeping is finished, as repair does, so the rollback record survives.
 func (e *Engine) Forget(name string) *Item {
 	it := &Item{Package: name}
 	if !paths.ValidPackageName(name) {
@@ -192,6 +193,19 @@ func (e *Engine) Forget(name string) *Item {
 		b := l.Begin()
 		what, dir = "interrupted "+b.Action, b.Dir
 		it.From, it.To, it.Dir = b.From, b.To, b.Dir
+		if l.Committed() {
+			// The change completed (a crash before its journal became the rollback record): there
+			// is nothing to give up, and deleting the journal would lose the only rollback record.
+			// Finish its bookkeeping as repair does.
+			_ = os.RemoveAll(e.cfg.Paths.Staging(name))
+			if err := e.tidy(name); err != nil {
+				it.fail(err)
+				return it
+			}
+			it.Result, it.Reason = ResultRepaired, "the change had completed; finished its bookkeeping instead of giving it up"
+			e.emit(events.Event{Level: events.Info, Event: "repair", Package: name, From: b.From, To: b.To, Msg: it.Reason})
+			return it
+		}
 	}
 	rec := e.installed(name)
 	if rec != nil {
