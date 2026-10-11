@@ -261,7 +261,11 @@ func Read(dir string) (*Log, error) {
 	if len(data) > maxSize {
 		return nil, fmt.Errorf("%w: %s is larger than %d bytes", ErrCorrupt, name, maxSize)
 	}
+	return parse(dir, name, data)
+}
 
+// parse checks and decodes the bytes of the journal in dir, read from the file name.
+func parse(dir, name string, data []byte) (*Log, error) {
 	l := &Log{Dir: dir}
 	aborted := false
 	rest := data

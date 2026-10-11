@@ -12,7 +12,7 @@ import (
 
 const h = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-func begin(t *testing.T) Record {
+func begin(t testing.TB) Record {
 	t.Helper()
 	return Record{
 		Op: OpBegin, ID: "r1", Pkg: "photocraft", Action: "update", From: "0.5.0", To: "0.6.0",
@@ -21,7 +21,7 @@ func begin(t *testing.T) Record {
 	}
 }
 
-func create(t *testing.T) (*Journal, string) {
+func create(t testing.TB) (*Journal, string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "journal", "photocraft")
 	j, err := Create(dir, begin(t))
