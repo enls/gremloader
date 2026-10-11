@@ -39,3 +39,15 @@ change is listed under **Breaking**.
   default) or `"off"`; `verify.require` may list `attestation`. An attested package is not moved to
   a version without a passing attestation unless `--allow-attestation-regression` is given. The
   trust root comes from Sigstore's TUF repository and is cached for a day.
+- `gremloader self-update` (`--check`, `--prerelease`, `--version`, `--allow-downgrade`): installs
+  a newer release of GremLoader over the running binary, from its own release archives, only with
+  a matching checksum and an attestation from `.github/workflows/release.yml`. Release candidates
+  are published as GitHub pre-releases and taken by binaries that are one, or with
+  `--prerelease`. On Windows the running binary is renamed aside and removed at the next start.
+  Its state is kept apart, under `<state>/self`.
+
+### Fixed
+
+- Undoing a change that failed before a file was replaced no longer renames the backup over that
+  file. When it was a running program on Windows, that rename was refused and the package was left
+  needing repair, although nothing had changed.

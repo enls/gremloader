@@ -45,8 +45,15 @@ release assets, on Windows and Linux:
   through a shell, with a timeout.
 - [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with
   notes on moving over from CraftWerk.
+- `gremloader self-update` replaces the running binary (and the README and licences beside it)
+  with the newest release of GremLoader, only if its checksum matches and its attestation shows it
+  was built by this repository's release workflow. A release candidate (`0.x.y-rc.n`) also takes
+  newer release candidates; a stable version only takes stable ones unless you pass
+  `--prerelease`. `--check` only looks (exit 2 when there is a newer one). It needs no package
+  file. Keep the binary in a folder you can write to (on Linux `~/.local/bin`, not
+  `/usr/local/bin`). See [ADR 0015](docs/decisions/0015-self-update.md).
 
-Not there yet: updating GremLoader itself (next), the scheduled run, other sources (apt, winget,
+Not there yet: the scheduled run, other sources (apt, winget,
 Docker Compose) and the web UI. GitHub's release attestations, and attestations of private
 repositories, are not checked.
 

@@ -52,9 +52,14 @@ Never publish before a manual run on real machines:
       `gh attestation verify <file> --repo enls/gremloader`.
 - [ ] Run it on the server: `gremloader version`, then the scenarios this release changed.
 - [ ] Same on a real Windows PC.
+- [ ] `gremloader self-update --check --prerelease` from a copy of the previous release (on a
+      Windows PC): it finds this release and reports it as attested.
 - [ ] Release notes read sensibly (they are generated from commits; edit them).
 
-Then publish the draft from the GitHub UI.
+Then publish the draft from the GitHub UI. A release candidate (`-rc.N` tag) is published with
+**"Set as a pre-release"** ticked, never as latest: `gremloader self-update` on a release candidate
+(or with `--prerelease`) finds it there, and a stable install never sees it. A draft is invisible
+to self-update. See ADR 0015.
 
 ## Building locally
 
