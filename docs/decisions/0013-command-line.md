@@ -59,6 +59,9 @@ read whole or written whole.
 event run in order and the first failure stops the rest. Working folder: the package folder, or
 when it is gone (a `post_remove` after `--delete-dir`) the nearest folder above it that exists.
 Environment: inherited plus `GREMLOADER_ACTION/PACKAGE/VERSION/PREVIOUS/DIR`. Stdin is empty.
+`pre_remove` and `post_remove` both get the removed version as `VERSION` (and `{version}`,
+`{tag}`), and an empty `PREVIOUS` (decided with the user after the M6+M7 bug check; before, a
+`{tag}` in `pre_remove` failed the remove, and `post_remove`'s `PREVIOUS` repeated `VERSION`).
 A timeout or an interrupt ends the hook **and everything it started**: on Windows the command is
 created suspended, put in a job object, then resumed, so it cannot start a process outside the
 job first; elsewhere it leads its own process group. A hook that finishes normally may leave a

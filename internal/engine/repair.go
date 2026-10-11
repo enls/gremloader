@@ -123,6 +123,8 @@ func (e *Engine) skippedHook(ctx context.Context, it *Item, l *journal.Log) {
 	}
 	if cr, err := readChange(l); err == nil && cr.After != nil {
 		it.Release.Tag = cr.After.Tag
+	} else if err == nil && cr.Before != nil && event == pkgfile.PostRemove {
+		it.Release.Tag = cr.Before.Tag // the removed version's, as remove itself gives it
 	}
 	e.runHook(ctx, it, pkg, event, b.Action)
 }

@@ -74,9 +74,12 @@ func TestLifeOfAPackageWithHooks(t *testing.T) {
 		"update app 2.0.0<-1.0.0 App\n" +
 		"rollback app 1.0.0<-2.0.0 App\n" +
 		"update app 3.0.0<-1.0.0 App\n" +
-		"remove app 3.0.0<-3.0.0 App\n" // the emptied install folder stays: it is not in the manifest
+		"remove app 3.0.0<- App\n" // post_remove: no PREVIOUS, run in the folder before it goes
 	if string(got) != want {
 		t.Errorf("hooks ran:\n%s\nwant:\n%s", got, want)
+	}
+	if _, err := os.Stat(r.dir()); err == nil {
+		t.Error("the emptied install folder is still there")
 	}
 }
 

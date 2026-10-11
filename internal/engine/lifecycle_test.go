@@ -246,6 +246,26 @@ func TestRemoveDeletesTheInstallFolderItEmptied(t *testing.T) {
 	}
 }
 
+// Both remove hooks see the same thing: VERSION is the version removed, PREVIOUS is empty (nothing
+// came before a remove), and {tag} is the removed version's tag (user, 2026-10-11).
+func TestRemoveHooksGetTheRemovedVersion(t *testing.T) {
+	r := newRig(t, appFile+"pre_remove = [[\"stop\", \"{tag}\"]]\npost_remove = [[\"unregister\", \"{tag}\"]]\n")
+	r.publish("app", "1.0.0", 30, v1Files...)
+	r.apply(r.engine(), Request{InstallMissing: true})
+	if it := r.engine().Remove(context.Background(), "app", RemoveOptions{}); it.Result != ResultRemoved {
+		t.Fatalf("remove = %+v (%v)", it, it.Err)
+	}
+	if len(r.hooks.ran) != 2 {
+		t.Fatalf("hooks = %+v", r.hooks.ran)
+	}
+	for i, want := range []string{"stop v1.0.0", "unregister v1.0.0"} {
+		h := r.hooks.ran[i]
+		if h.Action != "remove" || h.Version != "1.0.0" || h.Previous != "" || strings.Join(h.Commands[0], " ") != want {
+			t.Errorf("hook %d = %+v, want %q", i, h, want)
+		}
+	}
+}
+
 func TestFailingPreRemoveHookRemovesNothing(t *testing.T) {
 	r := newRig(t, appFile+"pre_remove = [[\"stop-service\"]]\n")
 	r.publish("app", "1.0.0", 30, v1Files...)

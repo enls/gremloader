@@ -549,6 +549,9 @@ func (e *Engine) runHook(ctx context.Context, it *Item, pkg *pkgfile.Package, ev
 	}
 	h := Hook{Package: it.Package, Event: event, Action: action, Version: it.To, Previous: it.From, Dir: it.Dir,
 		Commands: cmds, Timeout: pkg.HookTimeout}
+	if event == pkgfile.PostRemove {
+		h.Previous = "" // as in pre_remove: VERSION is the version removed, nothing came before it
+	}
 	e.emit(events.Event{Level: events.Info, Event: "hook.run", Package: it.Package, Step: event})
 	if err := e.cfg.Hooks.Run(ctx, h); err != nil {
 		e.emit(events.Event{Level: events.Warn, Event: "hook.fail", Package: it.Package, Step: event, Msg: err.Error()})

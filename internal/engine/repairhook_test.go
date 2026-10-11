@@ -14,7 +14,7 @@ import (
 
 const hookedFile = appFile + `post_install = [["register", "{name}", "{version}"]]
 post_update  = [["register", "{name}", "{version}"]]
-post_remove  = [["unregister", "{name}", "{version}"]]
+post_remove  = [["unregister", "{name}", "{version}", "{tag}"]]
 `
 
 // crashAt returns a fault function that "kills the process" at the named point.
@@ -74,7 +74,7 @@ func TestForwardRepairRunsTheSkippedHook(t *testing.T) {
 		{"remove", func(t *testing.T) *rig { return hookedAt(t, false) }, func(_ *rig, e *Engine) error {
 			_, err := e.remove(context.Background(), "app", RemoveOptions{})
 			return err
-		}, want{"post_remove", "remove", "1.0.0", "1.0.0", "unregister app 1.0.0"}},
+		}, want{"post_remove", "remove", "1.0.0", "", "unregister app 1.0.0 v1.0.0"}},
 	} {
 		for _, point := range []string{"record", "commit"} {
 			t.Run(tc.name+"/"+point, func(t *testing.T) {

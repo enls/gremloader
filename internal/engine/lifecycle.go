@@ -199,6 +199,7 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 		return it, nil
 	}
 	pkg := e.cfg.Packages.Packages[name]
+	it.Release.Tag = rec.Tag // {tag} in both remove hooks: the removed version's
 	if pkg != nil {
 		if err := e.hookMust(ctx, it, pkg, pkgfile.PreRemove); err != nil {
 			it.fail(fmt.Errorf("the pre_remove hook failed, nothing was removed: %w", err))
@@ -274,7 +275,7 @@ func (e *Engine) remove(ctx context.Context, name string, o RemoveOptions) (*Ite
 
 // hookMust runs a hook whose failure stops the operation (a pre hook).
 func (e *Engine) hookMust(ctx context.Context, it *Item, pkg *pkgfile.Package, event string) error {
-	cmds, err := pkg.Hooks(event, pkgfile.Values{Version: it.From, Platform: e.cfg.Platform})
+	cmds, err := pkg.Hooks(event, pkgfile.Values{Version: it.From, Tag: it.Release.Tag, Platform: e.cfg.Platform})
 	if err != nil || len(cmds) == 0 {
 		return err
 	}
