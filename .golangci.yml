@@ -21,6 +21,11 @@ linters:
       - path: internal/testutil/
         linters:
           - gosec
+      # The Win32 version-resource API takes and hands back raw pointers: unsafe is its interface.
+      - path: internal/peversion/peversion_windows.go
+        linters:
+          - gosec
+        text: G103
 
 formatters:
   enable:
