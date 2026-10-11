@@ -6,9 +6,11 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/enls/gremloader/internal/attest"
 	"github.com/enls/gremloader/internal/journal"
 	"github.com/enls/gremloader/internal/proc"
 	"github.com/enls/gremloader/internal/state"
@@ -385,6 +387,19 @@ func TestAdoptVerify(t *testing.T) {
 		}
 		if read(t, filepath.Join(r.dir(), "user.cfg")) != "mine" {
 			t.Error("user file lost")
+		}
+	})
+	// The download is checked like any other (ADR 0014), and the record says what it found.
+	t.Run("attested", func(t *testing.T) {
+		for _, fa := range []*fakeAttest{{def: passed}, {}} {
+			r := setup(t)
+			r.attest = fa
+			if it := r.engine().Adopt(context.Background(), "app", AdoptOptions{Version: "1.0.0", Verify: true}); it.Result != ResultAdopted {
+				t.Fatalf("item = %+v", it)
+			}
+			if rec := r.state().Packages["app"]; rec.Attested != (fa.def.Outcome == attest.Passed) || slices.Contains(rec.VerifiedBy, "attestation") != rec.Attested {
+				t.Errorf("%v: state = %+v", fa.def.Outcome, rec)
+			}
 		}
 	})
 	t.Run("different", func(t *testing.T) {

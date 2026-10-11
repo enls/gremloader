@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/root"
 
 	"github.com/enls/gremloader/internal/attest"
@@ -182,5 +183,26 @@ func TestDecodeSnappyLimits(t *testing.T) {
 	}
 	if _, err := DecodeSnappy([]byte{0x05, 0x00}); err == nil || errors.Is(err, ErrTooLarge) {
 		t.Errorf("corrupt: %v", err)
+	}
+}
+
+// checkSource backs up the SAN rule with the certificate's own source repository fields. A real
+// bundle cannot have a SAN in one repository and a source in another, so it is checked directly.
+func TestCheckSource(t *testing.T) {
+	good := certificate.Summary{Extensions: certificate.Extensions{Issuer: attest.GitHubIssuer,
+		SourceRepositoryURI: "https://github.com/o/app", SourceRepositoryOwnerURI: "https://github.com/o"}}
+	if err := checkSource(&good, "O/App"); err != nil {
+		t.Errorf("good: %v", err)
+	}
+	for name, change := range map[string]func(*certificate.Summary){
+		"repo":   func(s *certificate.Summary) { s.SourceRepositoryURI = "https://github.com/o/other" },
+		"owner":  func(s *certificate.Summary) { s.SourceRepositoryOwnerURI = "https://github.com/x" },
+		"issuer": func(s *certificate.Summary) { s.Issuer = "https://token.actions.githubusercontent.com.evil" },
+	} {
+		s := good
+		change(&s)
+		if err := checkSource(&s, "o/app"); err == nil {
+			t.Errorf("%s: no error", name)
+		}
 	}
 }
