@@ -82,7 +82,7 @@ func TestKilledMidUpdateIsRepaired(t *testing.T) {
 			}
 			_ = cmd.Wait()
 
-			for _, ri := range r.engine().Repair() {
+			for _, ri := range r.engine().Repair(context.Background()) {
 				if ri.Result != ResultRepaired {
 					t.Errorf("%s: repair %+v", line, ri)
 				}

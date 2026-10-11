@@ -367,7 +367,7 @@ func TestFailureAtEveryPointLeavesTheOldVersion(t *testing.T) {
 			}
 			if where == "commit" {
 				// The files and state.json were written; the journal finishes forward.
-				for _, ri := range r.engine().Repair() {
+				for _, ri := range r.engine().Repair(context.Background()) {
 					if ri.Result != ResultRepaired {
 						t.Errorf("fault %d (%s): repair %+v", k, where, ri)
 					}
@@ -411,7 +411,7 @@ func TestCrashAtEveryPointIsRepaired(t *testing.T) {
 		}
 
 		// A new process starts.
-		for _, ri := range r.engine().Repair() {
+		for _, ri := range r.engine().Repair(context.Background()) {
 			if ri.Result != ResultRepaired {
 				t.Errorf("crash %d (%s): repair %+v", k, where, ri)
 			}
@@ -472,7 +472,7 @@ func TestFailedUndoNeedsRepair(t *testing.T) {
 	if it := item(t, r.plan(r.engine(), Request{}), "app"); it.Result != ResultNeedsRepair {
 		t.Errorf("next plan = %+v", it)
 	}
-	for _, ri := range r.engine().Repair() {
+	for _, ri := range r.engine().Repair(context.Background()) {
 		if ri.Result != ResultRepaired {
 			t.Errorf("repair = %+v", ri)
 		}

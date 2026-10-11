@@ -82,6 +82,15 @@ nothing and is simply removed, by repair or by the next run's preflight; before 
 it blocked the package as "damaged, needs a look by hand", or made every later run fail on the
 leftover directory.
 
+**Hooks and repair** (decision 4 of the M5 bug check, built in M6). A change that repair finishes
+forward never ran its post hook: the run died between its files and its hook. Repair runs it, as
+the action that was interrupted (`GREMLOADER_ACTION` = install, update, rollback, remove...):
+`post_install` for an install, `post_remove` for a remove, `post_update` for everything else, under
+the package's `hook_fail` rule. An undone change runs no hook (it did not happen), nor does a
+package no longer in the package file. A change whose `commit` record was written gets no hook
+from repair: nothing may follow `commit` in the journal, so whether its hook ran before the crash
+cannot be known. **Hooks should therefore tolerate a rare double run and a rare miss.**
+
 **Commit, then promote.** After the last operation: `step state`, the manifest, `state.json`, the
 `commit` record. Then the journal becomes the package's rollback record (`previous/<pkg>/`; the
 older one is moved aside first and deleted after, so a crash in between leaves something

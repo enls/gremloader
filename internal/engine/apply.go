@@ -528,7 +528,11 @@ func (e *Engine) runHook(ctx context.Context, it *Item, pkg *pkgfile.Package, ev
 	if err := e.cfg.Hooks.Run(ctx, h); err != nil {
 		e.emit(events.Event{Level: events.Warn, Event: "hook.fail", Package: it.Package, Step: event, Msg: err.Error()})
 		if pkg.HookFail == "fail" {
-			it.Result, it.Err = ResultFailed, fmt.Errorf("installed, but the %s hook failed: %w", event, err)
+			done := "installed"
+			if event == pkgfile.PostRemove {
+				done = "removed"
+			}
+			it.Result, it.Err = ResultFailed, fmt.Errorf("%s, but the %s hook failed: %w", done, event, err)
 			return
 		}
 		it.notef("the %s hook failed: %v", event, err)

@@ -427,7 +427,7 @@ func sweep(t *testing.T, setup func(*testing.T) *rig, op func(*Engine) (*Item, e
 			if crash != (err != nil) {
 				t.Fatalf("crash=%v at %d (%s): err %v", crash, k, where, err)
 			}
-			for _, ri := range r.engine().Repair() {
+			for _, ri := range r.engine().Repair(context.Background()) {
 				if ri.Result != ResultRepaired {
 					t.Errorf("crash=%v at %d (%s): repair %+v", crash, k, where, ri)
 				}

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/enls/gremloader/internal/events"
 	"github.com/enls/gremloader/internal/journal"
+	"github.com/enls/gremloader/internal/pkgfile"
 	"github.com/enls/gremloader/internal/state"
 )
 
@@ -16,7 +18,7 @@ import (
 // in place (its journal reached the "state" step) is finished forward; any other is undone. A
 // committed change only has its bookkeeping completed. Repair is idempotent: run it again after
 // any failure, including one of its own.
-func (e *Engine) Repair() []*Item {
+func (e *Engine) Repair(ctx context.Context) []*Item {
 	// The run lock is held, so no staging area belongs to a running change: a crash during a
 	// download or an unpack (before any journal exists) leaves one behind.
 	if err := os.RemoveAll(filepath.Join(e.cfg.Paths.State, "staging")); err != nil {
@@ -29,13 +31,13 @@ func (e *Engine) Repair() []*Item {
 	var out []*Item
 	for _, d := range ents {
 		if d.IsDir() {
-			out = append(out, e.repairOne(d.Name()))
+			out = append(out, e.repairOne(ctx, d.Name()))
 		}
 	}
 	return out
 }
 
-func (e *Engine) repairOne(name string) *Item {
+func (e *Engine) repairOne(ctx context.Context, name string) *Item {
 	it := &Item{Package: name}
 	jdir := e.cfg.Paths.Journal(name)
 	_ = os.RemoveAll(e.cfg.Paths.Staging(name))
@@ -67,6 +69,7 @@ func (e *Engine) repairOne(name string) *Item {
 		return it
 	}
 
+	forward := false
 	switch {
 	case l.Committed():
 		if err := e.tidy(name); err != nil {
@@ -80,6 +83,7 @@ func (e *Engine) repairOne(name string) *Item {
 			return it
 		}
 		it.Result, it.Reason = ResultRepaired, fmt.Sprintf("every file of the %s was in place; finished it", b.Action)
+		forward = true
 	default:
 		if err := e.undo(l); err != nil {
 			it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("undoing the interrupted %s: %w", b.Action, err)
@@ -93,7 +97,33 @@ func (e *Engine) repairOne(name string) *Item {
 	}
 	it.Action = ActNone
 	e.emit(events.Event{Level: events.Info, Event: "repair", Package: name, From: b.From, To: b.To, Msg: it.Reason})
+	if forward {
+		e.skippedHook(ctx, it, l)
+	}
 	return it
+}
+
+// skippedHook runs the post hook of a change that repair finished forward: the run that made the
+// change died between its files and its hook (decision 4 of the M5 bug check). The hook runs as
+// the action that was interrupted. A change that had already committed gets no hook from repair:
+// nothing records whether its hook ran, so hooks must tolerate a rare miss or double run (ADR 0012).
+func (e *Engine) skippedHook(ctx context.Context, it *Item, l *journal.Log) {
+	pkg := e.cfg.Packages.Packages[it.Package]
+	if pkg == nil {
+		return // no longer in the package file: no hook to run
+	}
+	b := l.Begin()
+	event := pkgfile.PostUpdate // update, downgrade, reinstall, rollback
+	switch Action(b.Action) {
+	case ActInstall:
+		event = pkgfile.PostInstall
+	case ActRemove:
+		event, it.To = pkgfile.PostRemove, it.From // as remove itself runs it
+	}
+	if cr, err := readChange(l); err == nil && cr.After != nil {
+		it.Release.Tag = cr.After.Tag
+	}
+	e.runHook(ctx, it, pkg, event, b.Action)
 }
 
 // finishForward completes a change whose files are all in place: the manifest and state record it
