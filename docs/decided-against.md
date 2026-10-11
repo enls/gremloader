@@ -74,6 +74,10 @@ accident. Nothing here is deleted; if a decision is reversed, say so in the entr
   with the user (2026-10-11): when the thing in the way is in the old manifest (ours), the update
   removes it first, journaled so undo restores it; only a user's own file in the way is refused,
   with a message naming it. Refusing always would leave that package unable to update, ever.
-- **Only a clearer message for a read-only installed file.** Recommended, then turned down by the
-  user (2026-10-11) in favour of clearing the read-only attribute on files in the old manifest
-  (GremLoader's own) and replacing them. A user's own files are never touched.
+- **Clearing the read-only attribute on GremLoader's own files and replacing them.** Briefly
+  chosen by the user (2026-10-11) over "only a clearer message", then **reversed the same day**:
+  the message is simpler. Clearing the attribute also clears it on the hard-link backup (the bit
+  belongs to the file, not the name), so undo and rollback would bring the file back without it
+  unless the journal recorded the bit. And a user who set read-only may have meant it. The update
+  fails as before (exactly the old version), with a message saying the file is read-only and how to
+  clear it.
