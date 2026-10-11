@@ -156,6 +156,16 @@ func (x *executor) place(o op) error {
 		if err := x.backup(o.path, journal.OpBackup); err != nil {
 			return err
 		}
+		if x.e.isSelf(fi) {
+			// Not journaled: the backup holds the same bytes, undo puts them back at p, and the
+			// next start removes the aside name (ADR 0015).
+			if err := x.e.at("aside"); err != nil {
+				return err
+			}
+			if err := asideSelf(p); err != nil {
+				return fmt.Errorf("moving the running %s aside: %w", p, err)
+			}
+		}
 	}
 	if err := x.e.at("fs"); err != nil {
 		return err

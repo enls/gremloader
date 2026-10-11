@@ -9,14 +9,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
-// Test seams: the pause between retries of a file operation, and the rename underneath.
+// Test seams: the pause between retries of a file operation, and the rename and hard link underneath.
 var (
 	retrySleep = time.Sleep
 	osRename   = os.Rename
+	osLink     = os.Link
 )
 
 // retryShared runs op, retrying a few times when Windows reports that another program has the file
@@ -72,7 +74,7 @@ func hashFile(path string) (string, int64, error) {
 // on one volume (no copying, and the later replace of src is a rename, so the linked bytes are never
 // touched), otherwise a flushed copy.
 func linkOrCopy(src, dst string) error {
-	if err := os.Link(src, dst); err == nil {
+	if err := osLink(src, dst); err == nil {
 		return nil
 	}
 	return copyFile(src, dst)
@@ -141,6 +143,44 @@ func placeFile(src, dst string, move bool, mid func() error) error {
 		_ = os.Remove(src)
 	}
 	return nil
+}
+
+// asideRunning: the running binary must be renamed before it can be replaced (Windows). Tests set
+// it to run that path everywhere.
+var asideRunning = runtime.GOOS == "windows"
+
+// isSelf reports whether fi, a file about to be replaced, is the running binary that must be moved
+// aside first.
+func (e *Engine) isSelf(fi fs.FileInfo) bool {
+	if !asideRunning || e.cfg.Self == "" {
+		return false
+	}
+	self, err := os.Lstat(e.cfg.Self)
+	return err == nil && os.SameFile(fi, self)
+}
+
+// AsideNames are the names asideSelf may give the running binary at path, in the order tried: the
+// next start removes them (self-update, ADR 0015).
+func AsideNames(path string) []string {
+	out := []string{path + ".old"}
+	for i := 1; i <= 9; i++ {
+		out = append(out, fmt.Sprintf("%s.old.%d", path, i))
+	}
+	return out
+}
+
+// asideSelf renames the running binary at path to the first aside name that is free or can be
+// freed. An aside name still held by a program that is running is skipped, not waited for.
+func asideSelf(path string) error {
+	for _, n := range AsideNames(path) {
+		if _, err := os.Lstat(n); err == nil {
+			if os.Remove(n) != nil {
+				continue
+			}
+		}
+		return rename(path, n)
+	}
+	return fmt.Errorf("every name from %s.old to %s.old.9 is in use", filepath.Base(path), filepath.Base(path))
 }
 
 // tempOf reports the file a name made by tempName stands beside.

@@ -79,6 +79,10 @@ type Config struct {
 	// Attest checks attestations (ADR 0014). nil: they cannot be checked, as if unreachable, so a
 	// package that requires one is refused and an attested one never regresses silently.
 	Attest Attester
+	// Self is the running GremLoader binary (self-update, ADR 0015); "" when this engine does not
+	// replace it. On Windows a running program cannot be replaced, only renamed: placing a file
+	// over Self first moves it aside (asideSelf).
+	Self string
 }
 
 // Engine is a loaded state plus the means to change it.

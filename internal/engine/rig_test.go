@@ -57,6 +57,7 @@ type rig struct {
 	wrap       func(Fetcher) Fetcher        // nil: the real download client
 	exeVersion func(string) (string, error) // nil: none
 	attest     Attester                     // nil: a real sigstore.Checker over the fake (none published unless added)
+	self       string                       // Config.Self: the "running" GremLoader binary
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -160,6 +161,7 @@ func (r *rig) engineAt(apiBase, webBase string) *Engine {
 		Clock:   r.clock,
 		Home:    filepath.Join(r.root, "home"),
 		Running: func(dir string) ([]proc.Process, error) { return r.running, nil },
+		Self:    r.self,
 	})
 	if err != nil {
 		r.t.Fatal(err)
