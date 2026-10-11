@@ -193,7 +193,11 @@ func (e *Engine) quarantine(it *Item, asset string, ve *VerifyError) string {
 	if !info.Kept {
 		return fmt.Sprintf("The download (%d MiB) is too large to keep; what is known about it is in %s.", fi.Size()>>20, dir)
 	}
+	force := ""
+	if it.From == it.To { // the installed version (verify --remote, or install --force) is only reinstalled with --force
+		force = " --force"
+	}
 	return "The download is kept, never unpacked, in " + dir + " for inspection. If you have checked the hash " +
 		"received elsewhere (the release page, a second download, the author), install it with " +
-		fmt.Sprintf("`gremloader install %s@%s --accept-sha256 %s`.", it.Package, it.To, ve.received)
+		fmt.Sprintf("`gremloader install %s@%s --accept-sha256 %s%s`.", it.Package, it.To, ve.received, force)
 }

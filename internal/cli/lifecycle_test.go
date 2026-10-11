@@ -115,6 +115,28 @@ func TestVerifyRemoteExitCodes(t *testing.T) {
 	}
 }
 
+// The command verify --remote suggests for a mismatched download of the installed version does
+// what it says: it reinstalls that version (which needs --force), not a no-op.
+func TestVerifyRemoteHintReinstalls(t *testing.T) {
+	r := newRig(t, appFile)
+	received := r.publishBadSums("3.0.0")
+	if code, out, errOut := r.run("install", "app@3.0.0", "--yes", "--accept-sha256", received); code != exitcode.OK {
+		t.Fatalf("install 3.0.0: exit %d\n%s%s", code, out, errOut)
+	}
+	if err := os.WriteFile(filepath.Join(r.dir(), "app.exe"), []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, out, errOut := r.run("verify", "--remote")
+	_, hint, ok := strings.Cut(out+errOut, "`gremloader ")
+	hint, _, _ = strings.Cut(hint, "`")
+	if !ok || !strings.HasPrefix(hint, "install app@3.0.0 ") {
+		t.Fatalf("no install hint\n%s%s", out, errOut)
+	}
+	if code, out, errOut := r.run(append(strings.Fields(hint), "--yes")...); code != exitcode.OK || r.appExe() != "app 3.0.0" {
+		t.Errorf("gremloader %s: exit %d, app.exe %q\n%s%s", hint, code, r.appExe(), out, errOut)
+	}
+}
+
 func TestAdopt(t *testing.T) {
 	for _, line := range [][]string{{"adopt", "app", "--version", "1.0.0"}, {"install", "app@1.0.0", "--adopt"}} {
 		t.Run(line[0], func(t *testing.T) {
