@@ -103,8 +103,6 @@ func (c *call) getenv(k string) string {
 	return c.d.getenv(k)
 }
 
-// load finds and reads the package file. On failure it has reported the error and returns the
-// exit code.
 // env is where paths are looked up: the environment, with --home applied.
 func (c *call) env() paths.Env {
 	env := paths.System()
@@ -112,6 +110,8 @@ func (c *call) env() paths.Env {
 	return env
 }
 
+// load finds and reads the package file. On failure it has reported the error and returns the
+// exit code.
 func (c *call) load() (*world, int) {
 	env := c.env()
 	p, err := paths.Resolve(env)
