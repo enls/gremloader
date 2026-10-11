@@ -1,6 +1,7 @@
 package journal
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,7 +13,7 @@ import (
 
 const h = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-func begin(t *testing.T) Record {
+func begin(t testing.TB) Record {
 	t.Helper()
 	return Record{
 		Op: OpBegin, ID: "r1", Pkg: "photocraft", Action: "update", From: "0.5.0", To: "0.6.0",
@@ -21,7 +22,7 @@ func begin(t *testing.T) Record {
 	}
 }
 
-func create(t *testing.T) (*Journal, string) {
+func create(t testing.TB) (*Journal, string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "journal", "photocraft")
 	j, err := Create(dir, begin(t))
@@ -79,6 +80,26 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if !Exists(dir) || Exists(t.TempDir()) {
 		t.Error("Exists")
+	}
+}
+
+// An abort is what tells repair to undo a change that got as far as its state step.
+func TestAbortIsRead(t *testing.T) {
+	j, dir := create(t)
+	appendAll(t, j, Record{Op: OpCreated, Path: "a.txt"}, Record{Op: OpStep, Name: "state"})
+	l, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Aborted() {
+		t.Error("aborted before any abort was written")
+	}
+	appendAll(t, j, Record{Op: OpAbort})
+	if l, err = Read(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !l.Aborted() || l.Committed() || !l.HasStep("state") {
+		t.Errorf("log = %+v", l)
 	}
 }
 
@@ -179,6 +200,7 @@ func TestDamageIsCorrupt(t *testing.T) {
 		{"empty", func(string) string { return "" }},
 		{"two begins", func(s string) string { first, _, _ := strings.Cut(s, "\n"); return s + first + "\n" }},
 		{"record after commit", func(s string) string { return s + `{"op":"commit"}` + "\n" + `{"op":"created","path":"b"}` + "\n" }},
+		{"commit after abort", func(s string) string { return s + `{"op":"abort"}` + "\n" + `{"op":"commit"}` + "\n" }},
 		{"backup outside the journal", func(s string) string {
 			return s + `{"op":"backup","path":"x","backup":"../../x","size":1,"sha256":"` + h + `"}` + "\n"
 		}},
@@ -256,5 +278,43 @@ func TestOversizedJournalIsRefused(t *testing.T) {
 	}
 	if _, err := Read(dir); !errors.Is(err, ErrCorrupt) {
 		t.Errorf("err = %v, want ErrCorrupt", err)
+	}
+}
+
+func TestBegun(t *testing.T) {
+	j, dir := create(t)
+	_ = j.Close()
+	full, err := os.ReadFile(logFile(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		log  []byte // nil: no log file
+		want bool
+	}{
+		{"no log", nil, false},
+		{"empty log", []byte{}, false},
+		{"torn begin", full[:len(full)/2], false},
+		{"begin without its newline", full[:len(full)-1], false},
+		{"complete begin", full, true},
+		{"complete begin and a torn record", append(full, `{"op":"cre`...), true},
+		{"a long first line", append(bytes.Repeat([]byte("x"), 10000), '\n'), true},
+	} {
+		d := filepath.Join(t.TempDir(), "j")
+		if err := os.Mkdir(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if c.log != nil {
+			if err := os.WriteFile(logFile(d), c.log, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := Begun(d); got != c.want {
+			t.Errorf("%s: Begun = %v", c.name, got)
+		}
+	}
+	if Begun(filepath.Join(t.TempDir(), "missing")) {
+		t.Error("a missing directory has begun")
 	}
 }

@@ -37,6 +37,32 @@ type executor struct {
 	e   *Engine
 	j   *journal.Journal
 	dir string
+	// wanted holds the paths this change put or found in place, by case-folded name. On a
+	// case-insensitive file system an old "Readme.txt" may be the new "README.txt", and removing
+	// the old name would delete the new file.
+	wanted map[string][]string
+}
+
+func (x *executor) want(rel string) {
+	if x.wanted == nil {
+		x.wanted = map[string][]string{}
+	}
+	k := strings.ToLower(rel)
+	x.wanted[k] = append(x.wanted[k], rel)
+}
+
+// isWanted reports whether the file or folder fi at rel is one this change put or found in place
+// under a name that differs only in case.
+func (x *executor) isWanted(rel string, fi fs.FileInfo) bool {
+	for _, w := range x.wanted[strings.ToLower(rel)] {
+		if w == rel {
+			continue
+		}
+		if wi, err := os.Lstat(x.abs(w)); err == nil && os.SameFile(fi, wi) {
+			return true
+		}
+	}
+	return false
 }
 
 func (x *executor) append(r journal.Record) error {
@@ -81,6 +107,7 @@ func (x *executor) mkdir(rel string) error {
 	fi, err := os.Lstat(p)
 	switch {
 	case err == nil && fi.IsDir():
+		x.want(rel)
 		return nil
 	case err == nil:
 		return fmt.Errorf("%s: a file is in the way of a folder the new version needs", p)
@@ -93,6 +120,7 @@ func (x *executor) mkdir(rel string) error {
 	if err := x.e.at("fs"); err != nil {
 		return err
 	}
+	x.want(rel)
 	return os.Mkdir(p, 0o755) //nolint:gosec // G301: a folder of an install, readable like the rest of it
 }
 
@@ -135,7 +163,8 @@ func (x *executor) place(o op) error {
 	// No "placed" record follows: undo does not need one (a created path is removed whether or
 	// not it arrived, a backed-up one restored), and finishing forward goes by the "state" step.
 	// Leaving it out halves the flushes per file.
-	if err := placeFile(o.src, p, o.move); err != nil {
+	x.want(o.path)
+	if err := placeFile(o.src, p, o.move, func() error { return x.e.at("place") }); err != nil {
 		return fmt.Errorf("placing %s: %w", p, err)
 	}
 	return nil
@@ -151,6 +180,8 @@ func (x *executor) remove(rel string) error {
 		return err
 	case !fi.Mode().IsRegular():
 		return nil // not ours to delete; whatever it is, it is left alone
+	case x.isWanted(rel, fi):
+		return nil // the same file under its new name
 	}
 	if err := x.backup(rel, journal.OpRemoved); err != nil {
 		return err
@@ -168,6 +199,9 @@ func (x *executor) rmdir(rel string) error {
 	p := x.abs(rel)
 	if !isEmptyDir(p) {
 		return nil // something the user put there keeps it
+	}
+	if fi, err := os.Lstat(p); err == nil && x.isWanted(rel, fi) {
+		return nil // the same folder under its new name
 	}
 	if err := x.append(journal.Record{Op: journal.OpRmdir, Path: rel}); err != nil {
 		return err
@@ -189,6 +223,9 @@ func (e *Engine) undo(l *journal.Log) error {
 	dir := l.Begin().Dir
 	abs := func(rel string) string { return filepath.Join(dir, filepath.FromSlash(rel)) }
 	var errs []error
+	if err := removeTemps(dir, l); err != nil {
+		errs = append(errs, err)
+	}
 	for _, r := range slices.Backward(l.Records) {
 		if err := e.at("undo"); err != nil {
 			if errors.Is(err, errCrash) {
@@ -215,6 +252,38 @@ func (e *Engine) undo(l *journal.Log) error {
 		case journal.OpRmdir:
 			if err := os.MkdirAll(abs(r.Path), 0o755); err != nil { //nolint:gosec // G301: as above
 				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// removeTemps deletes the temporary files placeFile leaves beside a file the journal touched when
+// the process dies between filling one and renaming it into place. They are not journaled (that
+// would cost a flush per file); each folder is read once.
+func removeTemps(dir string, l *journal.Log) error {
+	beside := map[string]map[string]bool{} // folder -> names of files the journal touched there
+	for _, r := range l.Records {
+		switch r.Op {
+		case journal.OpCreated, journal.OpBackup, journal.OpRemoved:
+			parent, base := filepath.Split(filepath.Join(dir, filepath.FromSlash(r.Path)))
+			if beside[parent] == nil {
+				beside[parent] = map[string]bool{}
+			}
+			beside[parent][base] = true
+		}
+	}
+	var errs []error
+	for parent, names := range beside {
+		ents, err := os.ReadDir(parent)
+		if err != nil {
+			continue // a folder that is not there holds no temporary files
+		}
+		for _, e := range ents {
+			if base, ok := tempOf(e.Name()); ok && names[base] && e.Type().IsRegular() {
+				if err := remove(filepath.Join(parent, e.Name())); err != nil {
+					errs = append(errs, err)
+				}
 			}
 		}
 	}

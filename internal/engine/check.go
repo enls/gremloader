@@ -219,7 +219,7 @@ func (e *Engine) Verify(ctx context.Context, names []string, remote bool) []*Che
 
 func (e *Engine) verifyOne(ctx context.Context, name string, remote bool) *Check {
 	c := &Check{Package: name}
-	if q := filepath.Join(e.cfg.Paths.State, "quarantine", name); fileExists(filepath.Join(q, "info.json")) {
+	if q := e.quarantineDir(name); fileExists(filepath.Join(q, "info.json")) {
 		c.Quarantine = q
 	}
 	rec := e.installed(name)

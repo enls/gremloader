@@ -161,6 +161,7 @@ func (e *Engine) applyOne(ctx context.Context, it *Item, o ApplyOptions) error {
 		return failed(err)
 	}
 	_ = os.RemoveAll(stage)
+	e.clearQuarantine(it.Package, it.To)
 
 	it.Result = ResultUpdated
 	event := pkgfile.PostUpdate
@@ -207,20 +208,12 @@ func (e *Engine) change(ctx context.Context, it *Item, result *state.Package, m 
 		err = x.append(journal.Record{Op: journal.OpStep, Name: "state"})
 	}
 	if err != nil {
-		_ = j.Close()
-		if errors.Is(err, errCrash) {
-			return err
-		}
-		return e.rollbackChange(it.Package, err)
+		return e.abortChange(it.Package, j, err)
 	}
 
 	// 7. Record: from here on the change is complete, and an interruption finishes forward.
 	if err := e.at("record"); err != nil {
-		_ = j.Close()
-		if errors.Is(err, errCrash) {
-			return err
-		}
-		return e.rollbackChange(it.Package, err)
+		return e.abortChange(it.Package, j, err)
 	}
 	if err := e.commit(it.Package, j, result, m); err != nil {
 		return err
@@ -266,6 +259,30 @@ func (e *Engine) commit(name string, j *journal.Journal, result *state.Package, 
 	return nil
 }
 
+// abortChange gives up a change that failed: it records the abort, then undoes the journal. The
+// abort record comes first so that if the undo is itself interrupted, repair undoes again instead
+// of finishing forward over a half-restored folder (which a journal past its "state" step would
+// otherwise get). If even the abort cannot be recorded, nothing is undone and repair decides.
+func (e *Engine) abortChange(name string, j *journal.Journal, cause error) error {
+	if errors.Is(cause, errCrash) {
+		_ = j.Close()
+		return cause
+	}
+	err := e.at("abort")
+	if err == nil {
+		err = j.Append(journal.Record{Op: journal.OpAbort})
+	}
+	_ = j.Close()
+	if errors.Is(err, errCrash) {
+		return err
+	}
+	if err != nil {
+		return &RepairError{Package: name, Msg: fmt.Sprintf("%v; giving up could not be recorded (%v), so nothing was undone: "+
+			"run `gremloader repair`", cause, err)}
+	}
+	return e.rollbackChange(name, cause)
+}
+
 // rollbackChange undoes an uncommitted journal after a failure. The cause is returned when the
 // undo worked; a RepairError when it did not.
 func (e *Engine) rollbackChange(name string, cause error) error {
@@ -292,6 +309,13 @@ func (e *Engine) rollbackChange(name string, cause error) error {
 func (e *Engine) tidy(name string) error {
 	jdir, pdir := e.cfg.Paths.Journal(name), e.cfg.Paths.Previous(name)
 	old := pdir + ".old"
+	if _, err := os.Stat(jdir); err == nil && !journal.Begun(jdir) {
+		// Create died before its first record (or failed): nothing changed, and its directory
+		// would make the next Create fail.
+		if err := os.RemoveAll(jdir); err != nil {
+			return err
+		}
+	}
 	if journal.Exists(jdir) {
 		l, err := journal.Read(jdir)
 		if err != nil || !l.Committed() {
@@ -529,6 +553,19 @@ func readChange(l *journal.Log) (changeRecord, error) {
 	var cr changeRecord
 	if err := json.Unmarshal(l.Begin().Result, &cr); err != nil {
 		return cr, fmt.Errorf("the journal's state records: %w", err)
+	}
+	// Repair and rollback write these records and the paths in them; the journal parser sees only
+	// opaque JSON, so they get the checks state.json gets, and must be about the journal's folder.
+	for _, p := range []*state.Package{cr.Before, cr.After} {
+		if p == nil {
+			continue
+		}
+		if err := p.Validate(); err != nil {
+			return cr, fmt.Errorf("the journal's state records: %w", err)
+		}
+		if p.Version != "" && p.Dir != l.Begin().Dir {
+			return cr, fmt.Errorf("the journal's state records are about %s, the journal about %s", p.Dir, l.Begin().Dir)
+		}
 	}
 	return cr, nil
 }

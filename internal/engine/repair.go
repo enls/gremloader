@@ -39,13 +39,13 @@ func (e *Engine) repairOne(name string) *Item {
 	it := &Item{Package: name}
 	jdir := e.cfg.Paths.Journal(name)
 	_ = os.RemoveAll(e.cfg.Paths.Staging(name))
-	if !journal.Exists(jdir) {
-		// A journal directory without a log: Create died before its first record. Nothing changed.
+	if !journal.Begun(jdir) {
+		// No log, or no complete begin record: Create died before its first record. Nothing changed.
 		if err := os.RemoveAll(jdir); err != nil {
 			it.fail(err)
 			return it
 		}
-		it.Result, it.Reason = ResultRepaired, "removed an empty journal"
+		it.Result, it.Reason = ResultRepaired, "removed a journal that was never begun"
 		return it
 	}
 	l, err := journal.Read(jdir)
@@ -54,7 +54,18 @@ func (e *Engine) repairOne(name string) *Item {
 		return it
 	}
 	b := l.Begin()
+	if b.Pkg != name {
+		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("the journal in %s is about package %q; it needs a look by hand", jdir, b.Pkg)
+		return it
+	}
 	it.Action, it.From, it.To, it.Dir = Action(b.Action), b.From, b.To, b.Dir
+	if fi, err := os.Stat(b.Dir); !l.Committed() && (err != nil || !fi.IsDir()) {
+		// A drive not connected, most likely. Undo would find nothing to undo and call that
+		// success, or recreate the folder on whatever is mounted there now.
+		it.Result, it.Err = ResultNeedsRepair, fmt.Errorf("the install folder %s is not there (a drive not connected?); "+
+			"connect it and run repair again", b.Dir)
+		return it
+	}
 
 	switch {
 	case l.Committed():
@@ -63,7 +74,7 @@ func (e *Engine) repairOne(name string) *Item {
 			return it
 		}
 		it.Result, it.Reason = ResultRepaired, "finished the bookkeeping of a completed change"
-	case l.HasStep("state"):
+	case l.HasStep("state") && !l.Aborted():
 		if err := e.finishForward(name, l); err != nil {
 			it.Result, it.Err = ResultNeedsRepair, err
 			return it
@@ -121,7 +132,7 @@ func (e *Engine) forget(name string) {
 		e.setRecord(name, nil)
 		rec.Rejected = nil
 	}
-	for _, d := range []string{e.cfg.Paths.Previous(name), e.cfg.Paths.Manifests(name)} {
+	for _, d := range []string{e.cfg.Paths.Previous(name), e.cfg.Paths.Manifests(name), e.quarantineDir(name)} {
 		_ = os.RemoveAll(d)
 	}
 }

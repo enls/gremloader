@@ -141,11 +141,29 @@ type quarantineInfo struct {
 	Message  string `json:"message"`
 }
 
+func (e *Engine) quarantineDir(name string) string {
+	return filepath.Join(e.cfg.Paths.State, "quarantine", name)
+}
+
+// clearQuarantine drops a kept download once its version is installed (accepted, or verified on a
+// later try): the question it asked is answered.
+func (e *Engine) clearQuarantine(name, version string) {
+	dir := e.quarantineDir(name)
+	b, err := os.ReadFile(filepath.Join(dir, "info.json")) //nolint:gosec // G304: under the state dir
+	if err != nil {
+		return
+	}
+	var qi quarantineInfo
+	if json.Unmarshal(b, &qi) == nil && qi.Version == version {
+		_ = os.RemoveAll(dir)
+	}
+}
+
 // quarantine keeps a download that failed verification in state/quarantine/<pkg>/ for inspection:
 // never extracted, replaced by the package's next failure, and only up to quarantineCap. It returns
 // a sentence for the error message.
 func (e *Engine) quarantine(it *Item, asset string, ve *VerifyError) string {
-	dir := filepath.Join(e.cfg.Paths.State, "quarantine", it.Package)
+	dir := e.quarantineDir(it.Package)
 	if err := os.RemoveAll(dir); err != nil {
 		return "The download could not be kept: " + err.Error()
 	}

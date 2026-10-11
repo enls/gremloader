@@ -32,17 +32,27 @@ operation is recorded by a write-ahead rule:
   had one): undo does not need it, finishing forward goes by the `state` step, and leaving it out
   halves the flushes per file.
 
-**Saving the old file costs nothing on one volume.** The backup is a hard link
+**Saving the old file copies nothing on one volume.** The backup is a hard link
 (`journal/<pkg>/b/NNNN`), and the new file then *replaces* the old name with a rename, so the old
-bytes are never touched. Across volumes it is a flushed copy, and a new file is copied to a
+bytes are never written. They are read once: the backup's hash goes into its journal record, so
+undo can recognise a file already moved back and rollback can refuse a damaged backup (a 150 MB
+program costs one sequential read per update; corrected by the M5 bug check, which first said
+"costs nothing"). Across volumes it is a flushed copy, and a new file is copied to a
 temporary name beside the target and renamed over it, so the replace is still one step (P3-20).
+That temporary file (`.<name>.gremloader-N.tmp`, also used by every rollback) is not journaled;
+undo deletes any it finds beside a file the journal touched (found by the M5 bug check: a crash
+between the copy and the rename left one in the install folder).
 A file that another program holds open for a moment (antivirus, Explorer's preview) is retried five
 times over about three seconds (P3-13).
 
 **Order of an update:** new folders (parents first), every new file, the old files the new version
 no longer has (only when the old manifest is known: an adopted install keeps its unknown files),
 then old folders that became empty (deepest first). A folder is GremLoader's to remove only if it
-created it; the manifest lists those, and the user's own files in it keep it.
+created it; the manifest lists those, and the user's own files in it keep it. An old path is not
+removed when it is the same file or folder (`os.SameFile`) as one the change just put in place
+under a name differing only in case: on NTFS, v1's `Readme.txt` *is* v2's `README.txt`, and
+removing the old name deleted the new file while the update reported success (found by the M5
+bug check, 2026-10-11). On a case-sensitive file system they are two files and the old one goes.
 
 **Failure before the commit undoes the journal**, in reverse: created paths removed, saved files
 renamed back, folders removed (if empty) or recreated. Undo is idempotent, so it can be run again
@@ -54,7 +64,23 @@ not yet tidied is *not* a reason to stop: its bookkeeping is finished automatica
 
 **Repair** finishes forward when the journal reached its `state` step (every file was in place;
 the manifest and the state record to write are in the journal, so no network is needed), and
-undoes otherwise. It also clears every staging area, since the run lock guarantees none is in use.
+undoes otherwise, so the forward rule needs "and not `abort`": every in-process undo first writes
+an `abort` record, and if that undo is itself interrupted, repair undoes again rather than
+finishing forward over a half-undone folder. (Without it, a `step state` record that reached the
+disk but whose flush reported an error, followed by an undo that failed part-way, left state.json
+naming the new version over a mostly old folder; found by the M5 bug check, 2026-10-11.) If the
+`abort` record cannot be written, nothing is undone and repair later finishes forward, or undoes
+when there was no `step state`. Failures while writing the manifest or `state.json` are never
+undone: the files are all in place, so they leave the package for repair, which finishes forward.
+Repair also clears every staging area, since the run lock guarantees none is in use. Repair does nothing to an
+unfinished journal whose install folder is not there (a drive not connected): undo would have
+called the empty result success and dropped the journal, and recreated the folder on whatever is
+mounted there now (found by the M5 bug check). A folder gone for good needs a way to give the
+journal up (M6). A journal
+that never got a complete begin record (no log, or no complete line: `journal.Begun`) changed
+nothing and is simply removed, by repair or by the next run's preflight; before the M5 bug check
+it blocked the package as "damaged, needs a look by hand", or made every later run fail on the
+leftover directory.
 
 **Commit, then promote.** After the last operation: `step state`, the manifest, `state.json`, the
 `commit` record. Then the journal becomes the package's rollback record (`previous/<pkg>/`; the
@@ -98,8 +124,8 @@ lists a quarantined download.
 prompt. The download is fetched once more first (transient corruption is the common cause), as is
 an archive found damaged when nothing had verified its hash (one whose hash checked out is the
 publisher's: the same bytes would come again). A final mismatch keeps the bytes, never unpacked,
-in `state/quarantine/<pkg>/` (one per package, replaced by the next failure, at most 512 MiB, with
-an `info.json` either way), and the message names every trusted hash and its source, the hash
+in `state/quarantine/<pkg>/` (one per package, replaced by the next failure, deleted once that
+version is installed or the package removed, at most 512 MiB, with an `info.json` either way), and the message names every trusted hash and its source, the hash
 received, the likely causes without claiming malice, and the exact command to accept it.
 `--accept-sha256 <hash>` is honoured for one package and version per run, only when it equals the
 bytes received, only for a mismatch (not, say, a checksum file that does not list the asset); it
