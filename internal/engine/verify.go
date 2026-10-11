@@ -68,7 +68,8 @@ func (e *Engine) verify(it *Item, pkg *pkgfile.Package, got download.Result, sum
 	}
 	if !it.Locked {
 		for _, req := range pkg.VerifyRequire {
-			if !slices.Contains(levels, req) {
+			// Attestation is the next step's (attestation), not a hash this step compares.
+			if req != levelAttestation && !slices.Contains(levels, req) {
 				return nil, &VerifyError{Package: it.Package, Msg: fmt.Sprintf("verify.require lists %s, and nothing could check it", req)}
 			}
 		}

@@ -10,6 +10,7 @@ exit 0
 <TIME> info  download.start app 1.0.0
 <TIME> info  download.done app 1.0.0
 <TIME> info  verify.ok app 1.0.0 [checksum]
+<TIME> info  attest.none app 1.0.0
 <TIME> info  apply.commit app 1.0.0 installed
 <TIME> info  check.ok app 1.0.0 -> 2.0.0
 <TIME> info  check.ok app 1.0.0 -> 2.0.0
@@ -20,6 +21,7 @@ exit 0
 <TIME> info  download.start app 2.0.0
 <TIME> info  download.done app 2.0.0
 <TIME> info  verify.ok app 2.0.0 [checksum]
+<TIME> info  attest.none app 2.0.0
 <TIME> info  apply.commit app 1.0.0 -> 2.0.0 updated
 <TIME> info  rollback app 2.0.0 -> 1.0.0
 <TIME> info  check.ok app 1.0.0 -> 3.0.0

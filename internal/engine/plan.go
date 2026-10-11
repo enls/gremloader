@@ -291,9 +291,6 @@ func (e *Engine) pickAssets(it *Item, pkg *pkgfile.Package) error {
 
 // checkVerifiable refuses up front what the verify step could not satisfy.
 func (e *Engine) checkVerifiable(it *Item, pkg *pkgfile.Package) error {
-	if slices.Contains(pkg.VerifyRequire, "attestation") {
-		return &VerifyError{Package: it.Package, Msg: "verify.require lists attestation, which this version of GremLoader cannot check yet"}
-	}
 	if it.Locked {
 		return nil // the lock's hash stands in for every source
 	}

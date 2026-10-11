@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sigstore/sigstore-go/pkg/root"
+
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/engine"
@@ -22,6 +24,7 @@ import (
 	"github.com/enls/gremloader/internal/state"
 	"github.com/enls/gremloader/internal/testutil/archives"
 	"github.com/enls/gremloader/internal/testutil/fakerelease"
+	"github.com/enls/gremloader/internal/testutil/fixtures"
 )
 
 // appFile is a package file with one package, "app", installed into <root>/App.
@@ -107,6 +110,10 @@ func (r *rig) deps() deps {
 		webBase:  r.srv.WebBase(),
 		policy:   &download.Policy{Hosts: []string{"127.0.0.1"}, TokenHosts: []string{api.Host}, AllowHTTP: true},
 		sleep:    func(ctx context.Context, _ time.Duration) error { return ctx.Err() },
+		// Never the network: the captured public-good root (testdata/fixtures/sigstore).
+		trustRoot: func(context.Context) (root.TrustedMaterial, error) {
+			return root.NewTrustedRootFromJSON(fixtures.Read(r.t, "sigstore/trusted_root.json"))
+		},
 		// As proc.Under does: the programs whose executable lies under dir.
 		running: func(dir string) ([]proc.Process, error) {
 			var out []proc.Process

@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sigstore/sigstore-go/pkg/root"
+
+	"github.com/enls/gremloader/internal/attest"
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/events"
@@ -24,6 +27,7 @@ import (
 	"github.com/enls/gremloader/internal/state"
 	"github.com/enls/gremloader/internal/testutil/archives"
 	"github.com/enls/gremloader/internal/testutil/fakerelease"
+	"github.com/enls/gremloader/internal/testutil/fixtures"
 )
 
 // appFile is a package file with one package, "app", installed into <root>/App from zip assets
@@ -51,6 +55,7 @@ type rig struct {
 	free       func(string) (uint64, error) // nil: plenty
 	wrap       func(Fetcher) Fetcher        // nil: the real download client
 	exeVersion func(string) (string, error) // nil: none
+	attest     Attester                     // nil: a real attest.Checker over the fake (none published unless added)
 }
 
 func newRig(t *testing.T, packageFile string) *rig {
@@ -119,10 +124,28 @@ func (r *rig) engineAt(apiBase, webBase string) *Engine {
 		r.t.Fatal(err)
 	}
 	r.t.Cleanup(func() { _ = log.Close() })
+	src := github.New(client, github.Options{APIBase: apiBase, WebBase: webBase})
+	att := r.attest
+	if att == nil {
+		att = &attest.Checker{
+			List: func(ctx context.Context, repo, sum string) ([]attest.Raw, error) {
+				bs, err := src.Attestations(ctx, repo, sum, client, attest.MaxBundle)
+				var raws []attest.Raw
+				for _, b := range bs {
+					raws = append(raws, attest.Raw{Data: b.Data, Snappy: b.Snappy})
+				}
+				return raws, err
+			},
+			Root: func(context.Context) (root.TrustedMaterial, error) {
+				return root.NewTrustedRootFromJSON(fixtures.Read(r.t, "sigstore/trusted_root.json"))
+			},
+		}
+	}
 	e, err := New(Config{
 		Paths:     r.paths,
 		Packages:  cfg,
-		Source:    github.New(client, github.Options{APIBase: apiBase, WebBase: webBase}),
+		Source:    src,
+		Attest:    att,
 		Fetcher:   fetcher,
 		FreeSpace: free,
 		ExeVersion: func(p string) (string, error) {

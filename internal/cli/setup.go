@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/sigstore/sigstore-go/pkg/root"
+
+	"github.com/enls/gremloader/internal/attest"
 	"github.com/enls/gremloader/internal/clock"
 	"github.com/enls/gremloader/internal/download"
 	"github.com/enls/gremloader/internal/engine"
@@ -40,7 +44,12 @@ type deps struct {
 	// Network: empty bases and a nil policy mean the real GitHub.
 	apiBase, webBase string
 	policy           *download.Policy
-	sleep            func(ctx context.Context, d time.Duration) error // retry backoff; nil = real sleep
+	// bundlePolicy is for attestation bundles (ADR 0014); nil = policy when that is set, else
+	// download.BundlePolicy.
+	bundlePolicy *download.Policy
+	// trustRoot is Sigstore's trusted root; nil = fetched through TUF into the cache folder.
+	trustRoot func(ctx context.Context) (root.TrustedMaterial, error)
+	sleep     func(ctx context.Context, d time.Duration) error // retry backoff; nil = real sleep
 
 	// Engine hooks into the machine; nil = the real thing.
 	running    func(dir string) ([]proc.Process, error)
@@ -162,6 +171,7 @@ func (c *call) open(w *world) (*session, int) {
 		token = c.d.getenv("GH_TOKEN")
 	}
 	client := download.New(download.Config{Policy: policy, Token: token, Clock: c.d.clock, Sleep: c.d.sleep})
+	src := github.New(client, github.Options{APIBase: c.d.apiBase, WebBase: c.d.webBase})
 	var runner engine.HookRunner = &hooks.Runner{Events: log}
 	if c.g.verbose {
 		runner = &hooks.Runner{Events: log, Echo: c.io.Stderr}
@@ -172,7 +182,8 @@ func (c *call) open(w *world) (*session, int) {
 	e, err := engine.New(engine.Config{
 		Paths:      w.paths,
 		Packages:   w.cfg,
-		Source:     github.New(client, github.Options{APIBase: c.d.apiBase, WebBase: c.d.webBase}),
+		Source:     src,
+		Attest:     c.attester(w, src, policy),
 		Fetcher:    client,
 		Events:     log,
 		Hooks:      runner,
@@ -205,4 +216,35 @@ func (c *call) platform() platform.Platform {
 		return platform.Current()
 	}
 	return c.d.platform
+}
+
+// attester checks attestations for the engine (ADR 0014): the list through the API client, each
+// bundle through its own client under the bundle policy and with no token, the trust root fetched
+// (once, and only when a bundle needs it) into the cache folder.
+func (c *call) attester(w *world, src *github.Source, policy download.Policy) *attest.Checker {
+	bp := download.BundlePolicy()
+	switch {
+	case c.d.bundlePolicy != nil:
+		bp = *c.d.bundlePolicy
+	case c.d.policy != nil:
+		bp = policy
+	}
+	bundles := download.New(download.Config{Policy: bp, Clock: c.d.clock, Sleep: c.d.sleep})
+	trust := c.d.trustRoot
+	if trust == nil {
+		trust = func(ctx context.Context) (root.TrustedMaterial, error) {
+			return attest.TrustedRoot(ctx, filepath.Join(w.paths.Cache, "tuf"), nil)
+		}
+	}
+	return &attest.Checker{
+		List: func(ctx context.Context, repo, sum string) ([]attest.Raw, error) {
+			bs, err := src.Attestations(ctx, repo, sum, bundles, attest.MaxBundle)
+			raws := make([]attest.Raw, 0, len(bs))
+			for _, b := range bs {
+				raws = append(raws, attest.Raw{Data: b.Data, Snappy: b.Snappy})
+			}
+			return raws, err
+		},
+		Root: trust,
+	}
 }

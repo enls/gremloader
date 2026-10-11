@@ -95,6 +95,16 @@ func (e *Engine) stageOnce(ctx context.Context, it *Item, pkg *pkgfile.Package, 
 		}
 		levels = []string{"hash-override"}
 	}
+	if err := e.at("attest"); err != nil {
+		return nil, err
+	}
+	attested, err := e.attestation(ctx, it, pkg, got.SHA256, o)
+	if err != nil {
+		return nil, err
+	}
+	if attested {
+		levels = append(levels, levelAttestation)
+	}
 
 	// 3. Extract into staging.
 	if err := e.at("extract"); err != nil {

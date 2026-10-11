@@ -33,6 +33,9 @@ type ApplyOptions struct {
 	// Accept lets one download through whose hash differs from the trusted one (plan E.3.4). It
 	// comes only from the command line, after the user checked the hash elsewhere.
 	Accept *Acceptance
+	// AllowAttestationRegression lets an attested package change to a version without a passing
+	// attestation (P3-10, ADR 0014). --yes never sets it.
+	AllowAttestationRegression bool
 }
 
 // Acceptance is `install|update pkg@VER --accept-sha256 HASH`: for one package and one version,
@@ -394,6 +397,7 @@ func (e *Engine) installedRecord(it *Item, rec *state.Package, verifiedBy []stri
 	r := &state.Package{
 		Version: it.To, Tag: it.Release.Tag, Dir: it.Dir, Asset: it.Asset.Name, AssetSHA256: assetSHA,
 		InstalledAt: &now, VerifiedBy: verifiedBy, Manifest: state.ManifestRel(it.Package, it.To), SharedDir: it.Shared,
+		Attested: slices.Contains(verifiedBy, levelAttestation),
 	}
 	switch it.Action {
 	case ActUpdate, ActDowngrade:

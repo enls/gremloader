@@ -85,6 +85,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 		}
 		m := manifestOf(st.ar, dir, nil, shared)
 		rec.Tag, rec.Asset, rec.AssetSHA256, rec.VerifiedBy = fit.Release.Tag, fit.Asset.Name, st.got.SHA256, st.levels
+		rec.Attested = slices.Contains(st.levels, levelAttestation)
 		rec.Manifest = state.ManifestRel(name, v)
 		p := state.Path(e.cfg.Paths.State, rec.Manifest)
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
