@@ -84,6 +84,12 @@ func (e *Engine) attestationRegression(it *Item, o ApplyOptions, what string) er
 	if rec == nil || !rec.Attested {
 		return nil
 	}
+	if o.fetchOnly {
+		msg := fmt.Sprintf("the installed %s was recorded as attested, and the release of %s %s now; "+
+			"check where that release came from", rec.Version, it.To, what)
+		e.emit(events.Event{Level: events.Error, Event: "attest.fail", Package: it.Package, Version: it.To, Code: "attestation-regression", Msg: msg})
+		return &VerifyError{Package: it.Package, Msg: msg}
+	}
 	if o.AllowAttestationRegression {
 		e.emit(events.Event{Level: events.Warn, Event: "attest.regression", Package: it.Package, Version: it.To,
 			Code: "attestation-regression", Msg: fmt.Sprintf("%s was attested, and %s %s; allowed by --allow-attestation-regression", rec.Version, it.To, what)})

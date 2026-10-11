@@ -150,7 +150,7 @@ func (e *Engine) fetchVersion(ctx context.Context, name, version string) (*Item,
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		return it, nil, err
 	}
-	st, err := e.stage(ctx, it, e.cfg.Packages.Packages[name], work, ApplyOptions{})
+	st, err := e.stage(ctx, it, e.cfg.Packages.Packages[name], work, ApplyOptions{fetchOnly: true})
 	return it, st, err
 }
 

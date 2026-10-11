@@ -36,6 +36,9 @@ type ApplyOptions struct {
 	// AllowAttestationRegression lets an attested package change to a version without a passing
 	// attestation (P3-10, ADR 0014). --yes never sets it.
 	AllowAttestationRegression bool
+
+	// fetchOnly: the download is compared, not installed (verify --remote, adopt --verify).
+	fetchOnly bool
 }
 
 // Acceptance is `install|update pkg@VER --accept-sha256 HASH`: for one package and one version,

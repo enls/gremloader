@@ -256,3 +256,18 @@ func TestRollbackRestoresAttested(t *testing.T) {
 func hasEvent(evs []events.Event, name string) bool {
 	return slices.ContainsFunc(evs, func(e events.Event) bool { return e.Event == name })
 }
+
+// verify --remote installs nothing: when an attested install's release has lost its attestation,
+// it fails (exit 5) and says so, without pointing at an install flag it does not take.
+func TestVerifyRemoteReportsALostAttestation(t *testing.T) {
+	r, fa := attestedV1(t, appFile)
+	fa.def = attest.Result{}
+	c := r.engine().Verify(context.Background(), []string{"app"}, true)
+	var ve *VerifyError
+	if len(c) != 1 || !errors.As(c[0].Err, &ve) {
+		t.Fatalf("%+v", c)
+	}
+	if msg := c[0].Err.Error(); !strings.Contains(msg, "was recorded as attested") || strings.Contains(msg, "--allow-attestation-regression") {
+		t.Errorf("%s", msg)
+	}
+}
