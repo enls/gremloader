@@ -64,7 +64,12 @@ func defineInstall(fs *flag.FlagSet) func(*call, []string) int {
 		if len(args) != 1 {
 			return c.usagef("name one package, optionally with a version: <package>[@<version>]")
 		}
-		name, want, _ := strings.Cut(args[0], "@")
+		name, want, at := strings.Cut(args[0], "@")
+		if at {
+			if _, err := ver.ParseLoose(want); err != nil {
+				return c.usagef("%q: the version after @ is not a version: %v", args[0], err)
+			}
+		}
 		if *adopt {
 			return c.adopt(name, want, false)
 		}
@@ -89,6 +94,11 @@ func defineUpdate(fs *flag.FlagSet) func(*call, []string) int {
 	return func(c *call, args []string) int {
 		if *want != "" && len(args) != 1 {
 			return c.usagef("--version needs exactly one package")
+		}
+		if *want != "" {
+			if _, err := ver.ParseLoose(*want); err != nil {
+				return c.usagef("--version %q: %v", *want, err)
+			}
 		}
 		ch := change{rq: engine.Request{Packages: args, Want: *want, IgnoreCooldown: *now, Force: *force, IncludeHeld: *held,
 			AllowDowngrade: *downgrade}, updateLock: *updateLock}

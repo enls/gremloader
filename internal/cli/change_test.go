@@ -191,6 +191,27 @@ func TestUpdateLockAndLocked(t *testing.T) {
 	}
 }
 
+// A version that is empty or not a version is a wrong argument (exit 4), checked before anything
+// runs: `app@` must not quietly mean the newest version.
+func TestMalformedVersionIsUsage(t *testing.T) {
+	r := newRig(t, appFile)
+	r.publish("1.0.0", 10, archives.F("app.exe", "1"))
+	for _, line := range [][]string{
+		{"install", "app@", "--yes"},
+		{"install", "app@latest", "--yes"},
+		{"install", "app@1.0.0@x", "--yes"},
+		{"install", "app@", "--adopt"},
+		{"update", "app", "--version", "latest", "--yes"},
+	} {
+		if code, out, errOut := r.run(line...); code != exitcode.Usage || r.appExe() != "" {
+			t.Errorf("%q: exit %d, app %q, want 4 and nothing installed\n%s%s", line, code, r.appExe(), out, errOut)
+		}
+	}
+	if code, out, errOut := r.run("install", "app@v1.0.0", "--yes"); code != exitcode.OK || r.appExe() != "1" {
+		t.Errorf("app@v1.0.0: exit %d\n%s%s", code, out, errOut)
+	}
+}
+
 // An accepted hash is recorded only when that download was installed: a run that failed after the
 // download leaves the lock as it was, or other machines' --locked runs would trust it.
 func TestOverrideIsNotRecordedWhenTheInstallFailed(t *testing.T) {
