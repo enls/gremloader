@@ -33,3 +33,9 @@ change is listed under **Breaking**.
 - `shared_dir` for install folders several packages share, such as `~/.local`; two packages may
   never install the same file into one folder.
 - `examples/craft/`: a package file for the twelve Craft apps, replacing CraftWerk.
+- Build-provenance attestations (GitHub artifact attestations) verified natively with Sigstore
+  before anything is unpacked: the asset must have been built by a workflow of the package's own
+  repository, or a named one (`verify.signer_workflow`). `verify.attestation = "if-present"` (the
+  default) or `"off"`; `verify.require` may list `attestation`. An attested package is not moved to
+  a version without a passing attestation unless `--allow-attestation-regression` is given. The
+  trust root comes from Sigstore's TUF repository and is cached for a day.
