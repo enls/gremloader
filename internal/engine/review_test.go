@@ -106,3 +106,36 @@ func TestReadOnlyInstalledFile(t *testing.T) {
 	t.Logf("result %s: %v", it.Result, it.Err)
 	r.assertClean()
 }
+
+// Bug check of M5, suspicion 10: a same-version reinstall keeps the update's rollback record, whose
+// "created" files the reinstall has since replaced (same paths, new files). Rolling back must still
+// give exactly the old version, and forward again exactly the new one.
+func TestRollbackAfterAReinstall(t *testing.T) {
+	r := atV1(t)
+	if it := item(t, r.apply(r.engine(), Request{}), "app"); it.Result != ResultUpdated {
+		t.Fatalf("updating to v2: %+v", it)
+	}
+	// Damage a file of v2 that v1 also has, so the reinstall has something to put right.
+	if err := os.WriteFile(filepath.Join(r.dir(), "app.exe"), []byte("damaged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if it := item(t, r.apply(r.engine(), Request{Force: true}), "app"); it.Action != ActReinstall || it.Result != ResultUpdated {
+		t.Fatalf("reinstall: %+v", it)
+	}
+	assertTree(t, r.dir(), v2Tree)
+
+	if it := r.engine().Rollback(context.Background(), "app"); it.Result != ResultRolledBack || it.To != "1.0.0" {
+		t.Fatalf("rollback = %+v", it)
+	}
+	assertTree(t, r.dir(), v1Tree)
+	if v := r.state().Packages["app"].Version; v != "1.0.0" {
+		t.Errorf("state says %s", v)
+	}
+	r.assertClean()
+
+	if it := r.engine().Rollback(context.Background(), "app"); it.Result != ResultRolledBack || it.To != "2.0.0" {
+		t.Fatalf("forward again = %+v", it)
+	}
+	assertTree(t, r.dir(), v2Tree)
+	r.assertClean()
+}
