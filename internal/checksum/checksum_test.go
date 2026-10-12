@@ -65,7 +65,7 @@ func TestRealPhotocraftFixtureTextMode(t *testing.T) {
 	if len(e.Hash) != 64 {
 		t.Errorf("hash = %q", e.Hash)
 	}
-	// Exact matching: the -cli- style neighbour and prefixes must not match.
+	// Exact matching: the -cli- style neighbor and prefixes must not match.
 	for _, n := range []string{"photocraft-0.6.0-windows-x64-portable", "PHOTOCRAFT-0.6.0-windows-x64-portable.zip", ""} {
 		if _, err := f.Lookup(n); !errors.Is(err, ErrNotListed) {
 			t.Errorf("Lookup(%q) error = %v, want ErrNotListed", n, err)

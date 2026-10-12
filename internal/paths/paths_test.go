@@ -79,7 +79,7 @@ func TestRelativeXDGIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(p.Config, filepath.Join(home, ".config")) {
-		t.Errorf("relative XDG_CONFIG_HOME was honoured: %q", p.Config)
+		t.Errorf("relative XDG_CONFIG_HOME was honored: %q", p.Config)
 	}
 }
 

@@ -22,6 +22,10 @@ type AdoptOptions struct {
 	// Verify downloads that version's release and records the folder only if every file in it
 	// matches (adopt --verify). That also yields a manifest, so a later remove knows the files.
 	Verify bool
+	// Self adopts the running GremLoader (self-update, ADR 0015) at Version: a shared folder needs no
+	// file list (the package is never removed), and a record that no longer describes the running
+	// binary (another version, another folder) is replaced.
+	Self bool
 }
 
 // Adopt records an existing install folder as an installed package without touching a file
@@ -34,7 +38,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 		it.fail(fmt.Errorf("package %q is not in %s", name, e.cfg.Packages.File))
 		return it
 	}
-	if e.installed(name) != nil {
+	if e.installed(name) != nil && !o.Self {
 		it.fail(fmt.Errorf("%s is already installed", name))
 		return it
 	}
@@ -55,7 +59,7 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 	// In a shared folder only the release itself says which files are this package's; without
 	// that list the package could never be removed (a shared folder is not deleted whole).
 	shared := pkg.SharedDir(e.cfg.Platform.OS)
-	if shared && !o.Verify {
+	if shared && !o.Verify && !o.Self {
 		it.fail(fmt.Errorf("%s installs into %s, a shared folder (shared_dir): `gremloader adopt %s --verify` "+
 			"compares it with the release and records which files are its own", name, dir, name))
 		return it
@@ -97,13 +101,19 @@ func (e *Engine) Adopt(ctx context.Context, name string, o AdoptOptions) *Item {
 			return it
 		}
 	}
+	replaced := e.installed(name) != nil
 	e.setRecord(name, rec)
 	if err := e.saveState(); err != nil {
 		it.fail(err)
 		return it
 	}
+	if replaced {
+		// The replaced record's file lists and rollback copy describe a binary that is gone.
+		e.pruneManifests(name)
+		_ = os.RemoveAll(e.cfg.Paths.Previous(name))
+	}
 	it.Result, it.Err = ResultAdopted, nil
-	if !o.Verify {
+	if !o.Verify && !o.Self {
 		it.notef("adopted without a file list: an update keeps files the new version does not have, and remove needs --delete-dir")
 	}
 	e.emit(events.Event{Level: events.Info, Event: "adopt", Package: name, Version: v, Msg: dir})

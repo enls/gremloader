@@ -320,7 +320,7 @@ func TestClientErrorsFailFast(t *testing.T) {
 	}
 }
 
-func TestRetryAfterIsHonoured(t *testing.T) {
+func TestRetryAfterIsHonored(t *testing.T) {
 	cases := []struct {
 		header string
 		want   time.Duration

@@ -492,7 +492,7 @@ func TestDotSlashPrefixAndRootEntry(t *testing.T) {
 	}
 }
 
-func TestPermissionBitsAreNormalised(t *testing.T) {
+func TestPermissionBitsAreNormalized(t *testing.T) {
 	data := rawTar(t,
 		&tar.Header{Name: "suid", Typeflag: tar.TypeReg, Mode: 0o4755},
 		&tar.Header{Name: "sgid", Typeflag: tar.TypeReg, Mode: 0o2755},
@@ -676,7 +676,7 @@ func TestZipDirectoryCarryingDataIsRejected(t *testing.T) {
 	mustReject(t, data, Options{}, RuleDirWithData, "d/")
 }
 
-// ---- failure behaviour ----
+// ---- failure behavior ----
 
 type failingWriter struct {
 	w      io.WriteCloser
@@ -751,7 +751,7 @@ func TestDestinationMustBeEmpty(t *testing.T) {
 	}
 }
 
-func TestCancelledContextStopsAndCleans(t *testing.T) {
+func TestCanceledContextStopsAndCleans(t *testing.T) {
 	parent := t.TempDir()
 	src := filepath.Join(parent, "in.zip")
 	if err := os.WriteFile(src, archives.Zip(archives.F("a", "x"), archives.F("b", "y")), 0o600); err != nil {
@@ -826,7 +826,7 @@ func TestDetectIgnoresTheFileName(t *testing.T) {
 	}
 }
 
-// ---- the stdlib's own guard, as a second line of defence ----
+// ---- the stdlib's own guard, as a second line of defense ----
 
 // os.Root is what keeps a missed rule from writing outside the destination. This pins down what it
 // does on the OS under test, which the plan listed as not yet confirmed for Windows (E.8).
@@ -986,7 +986,7 @@ func TestEmptyNameIsRejected(t *testing.T) {
 	mustReject(t, data, Options{}, RuleEmptyName, "")
 }
 
-// ---- the last lines of defence, tested directly ----
+// ---- the last lines of defense, tested directly ----
 //
 // archive/zip and archive/tar already refuse to hand back more bytes than a header declares, so
 // through Extract the counting below is never the first to fire. It exists so that the limits do not
@@ -1012,7 +1012,7 @@ func TestCopyCountedStopsAtEitherCapWhateverTheSourceHolds(t *testing.T) {
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
 	if _, err := copyCounted(cctx, io.Discard, endless{'x'}, 1<<30, 1<<30); !errors.Is(err, context.Canceled) {
-		t.Errorf("cancelled: %v", err)
+		t.Errorf("canceled: %v", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -431,4 +432,57 @@ func TestRollbackRefusesAnotherPackagesFile(t *testing.T) {
 	}
 	assertTree(t, r.dir(), before)
 	r.assertClean()
+}
+
+// Self-update's adoption (ADR 0015): the running binary is recorded at its own version in a shared
+// folder without a file list, a record that no longer describes it is replaced, and the next
+// update goes from that version.
+func TestAdoptSelf(t *testing.T) {
+	ctx := context.Background()
+	r := bothInstalled(t)
+	if it := item(t, r.apply(r.engine(), Request{Packages: []string{"app"}}), "app"); it.Result != ResultUpdated {
+		t.Fatalf("update to 2.0.0: %+v (%v)", it, it.Err)
+	}
+	// The user put app 3.0.0 there by hand; 4.0.0 is out.
+	for _, f := range appFiles("3") {
+		write(t, filepath.Join(r.dir(), filepath.FromSlash(f.Name)), string(f.Data))
+	}
+	r.publish("app", "3.0.0", 10, appFiles("3")...)
+	r.publish("app", "4.0.0", 5, appFiles("4")...)
+	bBefore := *r.state().Packages["b"]
+
+	if it := r.engine().Adopt(ctx, "app", AdoptOptions{Version: "3.0.0"}); it.Result != ResultFailed {
+		t.Fatalf("adopt over a record without Self: %+v", it)
+	}
+	if it := r.engine().Adopt(ctx, "app", AdoptOptions{Version: "3.0.0", Self: true}); it.Result != ResultAdopted || len(it.Notes) != 0 {
+		t.Fatalf("adopt Self: %+v (%v)", it, it.Err)
+	}
+	rec := r.state().Packages["app"]
+	if rec.Version != "3.0.0" || rec.Manifest != "" || rec.Previous != nil || !rec.Adopted || !rec.SharedDir {
+		t.Errorf("record %+v", rec)
+	}
+	if ents, _ := os.ReadDir(r.paths.Manifests("app")); len(ents) != 0 {
+		t.Errorf("%d manifests of the replaced record left", len(ents))
+	}
+	if _, err := os.Stat(r.paths.Previous("app")); !os.IsNotExist(err) {
+		t.Errorf("the replaced record's rollback copy: %v", err)
+	}
+	if b := *r.state().Packages["b"]; !reflect.DeepEqual(b, bBefore) {
+		t.Errorf("b's record changed:\n%+v\n%+v", b, bBefore)
+	}
+
+	it := item(t, r.apply(r.engine(), Request{Packages: []string{"app"}}), "app")
+	if it.Result != ResultUpdated || it.From != "3.0.0" || it.To != "4.0.0" {
+		t.Fatalf("update after adopt: %+v (%v)", it, it.Err)
+	}
+	assertTree(t, r.dir(), sharedTree("4", "1"))
+
+	// Nothing recorded yet: a shared folder is adopted without --verify.
+	r = newSharedRig(t)
+	for _, f := range appFiles("1") {
+		write(t, filepath.Join(r.dir(), filepath.FromSlash(f.Name)), string(f.Data))
+	}
+	if it := r.engine().Adopt(ctx, "app", AdoptOptions{Version: "1.0.0", Self: true}); it.Result != ResultAdopted {
+		t.Fatalf("first adopt Self: %+v (%v)", it, it.Err)
+	}
 }

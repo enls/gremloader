@@ -1,8 +1,6 @@
 # Test fixtures
 
-Bytes captured from real releases, so the parsers and extractor are tested against what the world
-actually publishes and not against what we assume it does. These files are marked `-text` in
-`.gitattributes`: Git must never normalise them.
+Bytes captured from real releases, so the parsers and extractor are tested against what the world actually publishes and not against what we assume it does. These files are marked `-text` in `.gitattributes`: Git must never normalize them.
 
 | Path | Origin | Notes |
 |---|---|---|
@@ -11,8 +9,7 @@ actually publishes and not against what we assume it does. These files are marke
 | `craftwerk-v0.2.0/CraftWerk-Manager.tar.gz` | **derived**: the zip above, unpacked and repacked with GNU tar (`--sort=name`, fixed mtime, owner 0) and `gzip -n` | Not published by anyone. No real Craft tarball is small enough to commit (the app tarballs are ~70 MB) |
 | `photocraft-v0.6.0/SHA256SUMS.txt` | `storytold/photocraft` release v0.6.0, captured as published | Text-mode lines (`<hash>  <name>`, two spaces), 23 assets' worth of names, LF endings |
 
-The large release assets themselves are deliberately not here. Tests that need an archive of a
-specific shape build one in memory.
+The large release assets themselves are deliberately not here. Tests that need an archive of a specific shape build one in memory.
 
 ## Added for Phase 1 (M0)
 
@@ -26,9 +23,7 @@ specific shape build one in memory.
 
 ## Added for M8 (captured 2026-10-11)
 
-The bundle above (`gh_2.102.0_checksums.txt.bundle.sn`) turned out to be GitHub's **release
-attestation** (`initiator: github`, predicate `https://in-toto.io/attestation/release/v0.2`, signed
-by GitHub's own Sigstore instance, one bundle listing all 23 assets), not build provenance.
+The bundle above (`gh_2.102.0_checksums.txt.bundle.sn`) turned out to be GitHub's **release attestation** (`initiator: github`, predicate `https://in-toto.io/attestation/release/v0.2`, signed by GitHub's own Sigstore instance, one bundle listing all 23 assets), not build provenance.
 
 | Path | Origin | Notes |
 |---|---|---|
@@ -36,6 +31,10 @@ by GitHub's own Sigstore instance, one bundle listing all 23 assets), not build 
 | `ghcli-v2.102.0/attestations-zip-response.json` | that API response | Two items: the release attestation (the same bundle as the checksum file's) and the provenance. Query strings replaced by `?REDACTED` |
 | `sigstore/trusted_root.json` | target `trusted_root.json` of Sigstore's public-good TUF repository (`tuf-repo-cdn.sigstore.dev`), fetched through sigstore-go v1.3.0's TUF client, byte-exact | SHA-256 `6494e21e...0b66`. Verification checks certificates at the bundle's own timestamps, so this root does not go stale for these bundles |
 
-Facts these fixtures pin down (see the Phase 1 plan, E.8): GitHub release assets carry `digest`
-and `state`; the author's `SHA256SUMS.txt` and GitHub's `digest` agree for every PhotoCraft
-asset (checked by a test); Craft apps publish no attestations, cli/cli does.
+Facts these fixtures pin down (see the Phase 1 plan, E.8): GitHub release assets carry `digest` and `state`; the author's `SHA256SUMS.txt` and GitHub's `digest` agree for every PhotoCraft asset (checked by a test); Craft apps publish no attestations, cli/cli does.
+
+## Added for M9 (captured 2026-10-11)
+
+| Path | Origin | Notes |
+|---|---|---|
+| `gremloader-v0.0.2-rc.1/gremloader-0.0.2-rc.1-windows-amd64.zip.provenance.sn` | the `bundle_url` of `GET api.github.com/repos/enls/gremloader/attestations/sha256:d47dcd96...dea7` (our own release v0.0.2-rc.1, windows/amd64 zip, still a draft), as returned | **Build provenance**, snappy block format, SAN `https://github.com/enls/gremloader/.github/workflows/release.yml@refs/tags/v0.0.2-rc.1`. The only item: a draft has no release attestation. Ties self-update's built-in policy (ADR 0015) to what our release workflow really publishes. The zip is not kept: tests use its digest |

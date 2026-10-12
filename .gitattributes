@@ -12,5 +12,5 @@
 *.gz    binary
 *.png   binary
 
-# Test fixtures are captured bytes: never normalise line endings or touch them.
+# Test fixtures are captured bytes: never normalize line endings or touch them.
 testdata/fixtures/** -text

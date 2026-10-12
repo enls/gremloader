@@ -1,6 +1,6 @@
 package cli
 
-// The CraftWerk scenario port (plan E.5, M7): what CraftWerk does, behaviour C1-C19 of plan Part
+// The CraftWerk scenario port (plan E.5, M7): what CraftWerk does, behavior C1-C19 of plan Part
 // A, as tests of the command line with the shipped examples/craft/gremloader.toml against a fake
 // GitHub serving synthetic Craft releases (the real archive shapes, the version inside every
 // file). The Windows layout (one folder per app, register-apps.ps1) and the Linux one (all apps in

@@ -59,11 +59,11 @@ func TestFirstInterruptCancelsSecondQuits(t *testing.T) {
 	}
 }
 
-func TestStopEndsTheWatchWithoutCancelling(t *testing.T) {
+func TestStopEndsTheWatchWithoutCanceling(t *testing.T) {
 	sig := make(chan os.Signal, 1)
 	ctx, stop := interruptible(sig, &syncBuffer{}, func(int) { t.Error("exit called") })
 	if ctx.Err() != nil {
-		t.Fatal("cancelled before anything happened")
+		t.Fatal("canceled before anything happened")
 	}
 	stop()
 	sig <- os.Interrupt // nobody listens any more: nothing happens

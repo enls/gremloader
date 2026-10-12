@@ -156,6 +156,16 @@ func (x *executor) place(o op) error {
 		if err := x.backup(o.path, journal.OpBackup); err != nil {
 			return err
 		}
+		if x.e.isSelf(fi) {
+			// Not journaled: the backup holds the same bytes, undo puts them back at p, and the
+			// next start removes the aside name (ADR 0015).
+			if err := x.e.at("aside"); err != nil {
+				return err
+			}
+			if err := asideSelf(p); err != nil {
+				return fmt.Errorf("moving the running %s aside: %w", p, err)
+			}
+		}
 	}
 	if err := x.e.at("fs"); err != nil {
 		return err
@@ -216,7 +226,7 @@ func (x *executor) rmdir(rel string) error {
 }
 
 // undo reverses a journal: every record in reverse order. It is idempotent, so an undo that was
-// itself interrupted can simply be run again: a backup already moved back is recognised by its hash
+// itself interrupted can simply be run again: a backup already moved back is recognized by its hash
 // at the destination. Every record is attempted even after a failure, so as much as possible is
 // restored; the errors are returned together and the journal is kept for repair.
 func (e *Engine) undo(l *journal.Log) error {
@@ -291,13 +301,21 @@ func removeTemps(dir string, l *journal.Log) error {
 }
 
 // restore puts a backup back at dst. If the backup is gone, an earlier undo already moved it, and
-// dst must then hold exactly the saved bytes.
+// dst must then hold exactly the saved bytes. If dst still is the saved file, same bytes and same
+// mode (the change failed before replacing it), it stays and the backup goes: dst may be a running
+// program, which Windows does not let a rename replace.
 func restore(backup, dst, sum string) error {
-	if _, err := os.Lstat(backup); errors.Is(err, fs.ErrNotExist) {
-		if got, _, herr := hashFile(dst); herr == nil && got == sum {
-			return nil
-		}
+	bi, err := os.Lstat(backup)
+	got, _, herr := hashFile(dst)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && herr == nil && got == sum:
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("the backup of %s is missing and the file there is not the saved one", dst)
+	case err == nil && herr == nil && got == sum:
+		if di, derr := os.Lstat(dst); derr == nil && di.Mode() == bi.Mode() {
+			return remove(backup)
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil { //nolint:gosec // G301: as above
 		return err

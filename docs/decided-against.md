@@ -1,125 +1,40 @@
 # Decided against
 
-Ideas that were considered and turned down, with the reasoning, so they are not re-litigated by
-accident. Nothing here is deleted; if a decision is reversed, say so in the entry and link the ADR.
+Ideas that were considered and turned down, with the reasoning, so they are not re-litigated by accident. Nothing here is deleted; if a decision is reversed, say so in the entry and link the ADR.
 
-- **The WebUI library (webui-dev/webui).** The Go wrapper uses cgo (needs a C compiler, breaks
-  one-command cross-compiling), requires an installed browser at runtime (headless servers have
-  none), is still beta, and its Go v2 API is described as incomplete. Plain `net/http` + `go:embed`
-  gives the same result in pure Go. See ADR 0003.
-- **A terminal menu as the primary interface.** Chosen first, then replaced by the web UI. Possible
-  later on the same core.
-- **The UI writing changes back into `gremloader.toml`.** TOML libraries drop comments and
-  reformat; UI edits go to `gremloader.local.toml`. See ADR 0004.
+- **The WebUI library (webui-dev/webui).** The Go wrapper uses cgo (needs a C compiler, breaks one-command cross-compiling), requires an installed browser at runtime (headless servers have none), is still beta, and its Go v2 API is described as incomplete. Plain `net/http` + `go:embed` gives the same result in pure Go. See ADR 0003.
+- **A terminal menu as the primary interface.** Chosen first, then replaced by the web UI. Possible later on the same core.
+- **The UI writing changes back into `gremloader.toml`.** TOML libraries drop comments and reformat; UI edits go to `gremloader.local.toml`. See ADR 0004.
 - **One file for desired state, lock and installed state.** Separate jobs, separate files.
-- **Assuming semver everywhere.** apt, Docker and date-versioned projects don't follow it. See
-  ADR 0005.
-- **Loading htmx or fonts from a CDN.** Breaks offline use and the strict CSP; everything is
-  embedded.
-- **Shelling out to `gh` for attestation verification.** Chosen instead: native sigstore-go. Avoids
-  requiring `gh` on every machine, at the cost of a larger dependency. See ADR 0006.
+- **Assuming semver everywhere.** apt, Docker and date-versioned projects don't follow it. See ADR 0005.
+- **Loading htmx or fonts from a CDN.** Breaks offline use and the strict CSP; everything is embedded.
+- **Shelling out to `gh` for attestation verification.** Chosen instead: native sigstore-go. Avoids requiring `gh` on every machine, at the cost of a larger dependency. See ADR 0006.
 - **A `grem` short alias.** Taken by another repo-manager tool.
 - **Treating the gangsheet app's npm dependencies as host dependencies.** They live in the image.
-- **A y/n prompt on a hash mismatch ("this may be malicious, continue?").** Proposed 2026-10-10 and
-  turned down in favour of a hard failure with `--accept-sha256 <hash>`. The scheduled run has no
-  terminal, a bare "y" is answered by reflex, "may be malicious" overstates what is usually a corrupt
-  download or a publisher who did not regenerate the checksum file, and the override should record
-  *which bytes* were accepted. A prompt that defaults to N, only on a TTY, was considered a fallback
-  but the hash form is the only way through. See the Phase 1 plan, E.3.4.
-- **Escaping template values that contain wildcard characters** (so a `[vars]` value with `*` could
-  appear in an asset name literally). The asset matcher (`path.Match` behind `SelectAsset`) refuses
-  `\`, so there is no escape syntax to use, and inventing one for a case no real release has adds a
-  rule to learn. A substituted value that would add `/ \ * ? [ ]` to a file name is refused instead.
-  See ADR 0011.
-- **Local `[settings]` overriding presets and packages.** A machine-wide default set in the UI
-  would then silently beat a value the package file states for one package. It sits just above
-  the file's `[settings]` instead; per-package local values still win over everything. See ADR 0011.
-- **A wait-for-the-lock mode on the run lock.** A second run fails at once with exit code 3; a
-  scheduler that wants to retry can do so. Waiting hides a hung run behind a silent one.
-- **Repairing an interrupted change automatically at the start of every run.** Proposed while
-  planning M5 (2026-10-10) and turned down with the user: a failure that undo itself could not fix
-  (a file another program keeps locked, a full disk) would be retried silently every week. The
-  package is skipped as `needs-repair` (exit 6) until `gremloader repair` runs; other packages
-  still update. Leftovers of an already *committed* change are tidied automatically, since there
-  is nothing to decide. See ADR 0012.
-- **A full copy of the install folder as the rollback record** (what CraftWerk does with
-  `previous\`). Every update would copy every byte, and the copy cannot tell which files the update
-  added. The update's journal, with hard-link backups, is the rollback record instead. See ADR 0012.
-- **Keeping an overlay install's overwritten files for the life of the install, or refusing to
-  remove one.** Decided with the user after the M5 bug check (2026-10-11): `--overlay` says at
-  install time that the files it overwrites are kept only until the next update, and remove names
-  what it discards. A separate store restored on remove (`state/overlay/<pkg>/`) means a new store
-  with its own crash handling. The main overlay case (a shared folder like `~/.local`) now has its
-  own key, so the case is rare. Refusing remove behind a flag only adds a step. Revisit if it bites.
-- **`overlay = true` in a preset, or installing Linux packages under `~/.local/share/<app>` with
-  links into `~/.local/bin`, for a shared target like `~/.local`.** Decided with the user
-  (2026-10-11): a package-file key `shared_dir = true` instead (never require the folder empty,
-  never claim existing folders, never `--delete-dir`). Overlay means a one-time install over
-  existing files and brings its backup rules into every install. The `share/<app>` layout is
-  cleaner ownership but not what the Craft tarballs are built for.
-- **Refusing, or ignoring, a Windows path over 260 characters.** Decided with the user
-  (2026-10-11): the plan warns and does not block. GremLoader itself copes (Go uses long-path
-  forms), and a machine with `LongPathsEnabled` should not be refused. Ignoring it leaves the app
-  or a hook to fail later with no hint.
-- **Leaving hooks out of repair entirely.** Decided with the user (2026-10-11): a change that
-  repair finishes forward runs the `post_install`/`post_update` hook the failed run skipped. A
-  crash after the commit but before the hook cannot be detected cheaply (nothing may follow the
-  commit record), so that case only gets a note naming the hook to run. *(Corrected 2026-10-11,
-  M6: as built and as the decision's build notes said, that case gets no note and no hook; ADR
-  0012 documents it, and that hooks must tolerate a rare double run or miss.)*
-- **Giving up an unfinished journal automatically when its install folder stays missing, or only
-  documenting "delete the journal by hand".** Decided with the user (2026-10-11):
-  `gremloader repair --forget <pkg>`, with confirmation. An automatic give-up could fire while a
-  drive is just unplugged; deleting state files by hand is the kind of step GremLoader exists to
-  remove.
-- **Always refusing when a file becomes a folder between versions (or the reverse).** Decided
-  with the user (2026-10-11): when the thing in the way is in the old manifest (ours), the update
-  removes it first, journaled so undo restores it; only a user's own file in the way is refused,
-  with a message naming it. Refusing always would leave that package unable to update, ever.
-- **Clearing the read-only attribute on GremLoader's own files and replacing them.** Briefly
-  chosen by the user (2026-10-11) over "only a clearer message", then **reversed the same day**:
-  the message is simpler. Clearing the attribute also clears it on the hard-link backup (the bit
-  belongs to the file, not the name), so undo and rollback would bring the file back without it
-  unless the journal recorded the bit. And a user who set read-only may have meant it. The update
-  fails as before (exactly the old version), with a message saying the file is read-only and how to
-  clear it.
-- **`spf13/cobra` or `pflag` for the command line** (Q14, built in M6). A few dozen lines of
-  pre-sorter on the standard `flag` package give flags anywhere without a dependency. See ADR 0013.
-- **Ending everything a hook started once the hook succeeds** (a Windows job object with
-  kill-on-close). A hook may start a program on purpose; the tree is ended only on a timeout or an
-  interrupt. See ADR 0013.
-- **Taking a confirmation from a stdin that is not a terminal.** The scheduled run's stdin is
-  whatever the scheduler connected; a stray "y" there would apply a plan nobody saw. Without a
-  terminal, changes need `--yes`. See ADR 0013.
-- **Failing the run for a pin below the installed version.** Decided with the user (2026-10-11)
-  that a *requested* version refused without `--allow-downgrade` exits 1; a pin is configuration,
-  and failing it would fail every scheduled run until someone unpinned, so it stays "skipped".
-- **Downloading each platform's asset in `gremloader lock` to hash it when neither the checksum
-  file nor GitHub's digest states its hash.** Up to 150 MB per platform for a command that should
-  be quick; `lock` refuses and says why. See ADR 0011.
-- **Letting the last package win when two install the same file in one folder.** Decided with the
-  user while planning M7 (2026-10-11): refused instead, before anything changes (ADR 0012). With
-  last-wins (what CraftWerk's `cp -a` into `~/.local` did), removing either package deletes the
-  other's file, and nothing would say so. The Craft tarballs keep their files under per-app names,
-  so the refusal costs them nothing.
-- **Rewriting `Exec=` in the shipped `.desktop` files to a full path** (what CraftWerk did on Linux).
-  Decided with the user (2026-10-11): the file is in the package's file list, so after the edit
-  `verify` would report it changed and every plan would carry a drift note, for all twelve apps.
-  The Craft file's hook warns instead when `~/.local/bin` is not on `PATH`; most desktops add it
-  at login once the folder exists.
-- **A package key listing files a hook may change** (left out of verify and drift notes), to keep
-  the `.desktop` rewrite. Considered in the same decision: new engine surface and another rule for
-  a case the PATH warning covers. Revisit if a real package needs its hook to edit its own files.
-- **Shipping the Craft Linux hook as a separate script** (`examples/craft/craft-linux-hook.sh`).
-  Decided with the user (2026-10-11): an inline `sh -c` in the package file, so there is nothing
-  extra to place on each machine. Its cost: no braces in the script (hook arguments are
-  templates; `{{`/`}}` would escape them) and at most 1024 bytes.
-- **Allowing only `tmaproduction.blob.core.windows.net` for attestation bundles.** Offered as the
-  default; the user chose `*.blob.core.windows.net` (2026-10-11): a rename on GitHub's side would
-  otherwise break every check, and the bundle is verified cryptographically. The wildcard is for
-  the bundle fetch only, never for assets. See ADR 0014.
-- **A signer-workflow pin as the default attestation identity.** Every package file would need the
-  workflow's path before it counted as attested. Chosen: the `gh --repo` identity, with an optional
-  `verify.signer_workflow`. See ADR 0014.
-- **Counting GitHub's release attestation as "attested".** It says the asset belongs to a release,
-  not how it was built, and needs GitHub's own TUF root. Skipped, not failed. See ADR 0014.
+- **A y/n prompt on a hash mismatch ("this may be malicious, continue?").** Proposed 2026-10-10 and turned down in favor of a hard failure with `--accept-sha256 <hash>`. The scheduled run has no terminal, a bare "y" is answered by reflex, "may be malicious" overstates what is usually a corrupt download or a publisher who did not regenerate the checksum file, and the override should record *which bytes* were accepted. A prompt that defaults to N, only on a TTY, was considered a fallback but the hash form is the only way through. See the Phase 1 plan, E.3.4.
+- **Escaping template values that contain wildcard characters** (so a `[vars]` value with `*` could appear in an asset name literally). The asset matcher (`path.Match` behind `SelectAsset`) refuses `\`, so there is no escape syntax to use, and inventing one for a case no real release has adds a rule to learn. A substituted value that would add `/ \ * ? [ ]` to a file name is refused instead. See ADR 0011.
+- **Local `[settings]` overriding presets and packages.** A machine-wide default set in the UI would then silently beat a value the package file states for one package. It sits just above the file's `[settings]` instead; per-package local values still win over everything. See ADR 0011.
+- **A wait-for-the-lock mode on the run lock.** A second run fails at once with exit code 3; a scheduler that wants to retry can do so. Waiting hides a hung run behind a silent one.
+- **Repairing an interrupted change automatically at the start of every run.** Proposed while planning M5 (2026-10-10) and turned down with the user: a failure that undo itself could not fix (a file another program keeps locked, a full disk) would be retried silently every week. The package is skipped as `needs-repair` (exit 6) until `gremloader repair` runs; other packages still update. Leftovers of an already *committed* change are tidied automatically, since there is nothing to decide. See ADR 0012.
+- **A full copy of the install folder as the rollback record** (what CraftWerk does with `previous\`). Every update would copy every byte, and the copy cannot tell which files the update added. The update's journal, with hard-link backups, is the rollback record instead. See ADR 0012.
+- **Keeping an overlay install's overwritten files for the life of the install, or refusing to remove one.** Decided with the user after the M5 bug check (2026-10-11): `--overlay` says at install time that the files it overwrites are kept only until the next update, and remove names what it discards. A separate store restored on remove (`state/overlay/<pkg>/`) means a new store with its own crash handling. The main overlay case (a shared folder like `~/.local`) now has its own key, so the case is rare. Refusing remove behind a flag only adds a step. Revisit if it bites.
+- **`overlay = true` in a preset, or installing Linux packages under `~/.local/share/<app>` with links into `~/.local/bin`, for a shared target like `~/.local`.** Decided with the user (2026-10-11): a package-file key `shared_dir = true` instead (never require the folder empty, never claim existing folders, never `--delete-dir`). Overlay means a one-time install over existing files and brings its backup rules into every install. The `share/<app>` layout is cleaner ownership but not what the Craft tarballs are built for.
+- **Refusing, or ignoring, a Windows path over 260 characters.** Decided with the user (2026-10-11): the plan warns and does not block. GremLoader itself copes (Go uses long-path forms), and a machine with `LongPathsEnabled` should not be refused. Ignoring it leaves the app or a hook to fail later with no hint.
+- **Leaving hooks out of repair entirely.** Decided with the user (2026-10-11): a change that repair finishes forward runs the `post_install`/`post_update` hook the failed run skipped. A crash after the commit but before the hook cannot be detected cheaply (nothing may follow the commit record), so that case only gets a note naming the hook to run. *(Corrected 2026-10-11, M6: as built and as the decision's build notes said, that case gets no note and no hook; ADR 0012 documents it, and that hooks must tolerate a rare double run or miss.)*
+- **Giving up an unfinished journal automatically when its install folder stays missing, or only documenting "delete the journal by hand".** Decided with the user (2026-10-11): `gremloader repair --forget <pkg>`, with confirmation. An automatic give-up could fire while a drive is just unplugged; deleting state files by hand is the kind of step GremLoader exists to remove.
+- **Always refusing when a file becomes a folder between versions (or the reverse).** Decided with the user (2026-10-11): when the thing in the way is in the old manifest (ours), the update removes it first, journaled so undo restores it; only a user's own file in the way is refused, with a message naming it. Refusing always would leave that package unable to update, ever.
+- **Clearing the read-only attribute on GremLoader's own files and replacing them.** Briefly chosen by the user (2026-10-11) over "only a clearer message", then **reversed the same day**: the message is simpler. Clearing the attribute also clears it on the hard-link backup (the bit belongs to the file, not the name), so undo and rollback would bring the file back without it unless the journal recorded the bit. And a user who set read-only may have meant it. The update fails as before (exactly the old version), with a message saying the file is read-only and how to clear it.
+- **`spf13/cobra` or `pflag` for the command line** (Q14, built in M6). A few dozen lines of pre-sorter on the standard `flag` package give flags anywhere without a dependency. See ADR 0013.
+- **Ending everything a hook started once the hook succeeds** (a Windows job object with kill-on-close). A hook may start a program on purpose; the tree is ended only on a timeout or an interrupt. See ADR 0013.
+- **Taking a confirmation from a stdin that is not a terminal.** The scheduled run's stdin is whatever the scheduler connected; a stray "y" there would apply a plan nobody saw. Without a terminal, changes need `--yes`. See ADR 0013.
+- **Failing the run for a pin below the installed version.** Decided with the user (2026-10-11) that a *requested* version refused without `--allow-downgrade` exits 1; a pin is configuration, and failing it would fail every scheduled run until someone unpinned, so it stays "skipped".
+- **Downloading each platform's asset in `gremloader lock` to hash it when neither the checksum file nor GitHub's digest states its hash.** Up to 150 MB per platform for a command that should be quick; `lock` refuses and says why. See ADR 0011.
+- **Letting the last package win when two install the same file in one folder.** Decided with the user while planning M7 (2026-10-11): refused instead, before anything changes (ADR 0012). With last-wins (what CraftWerk's `cp -a` into `~/.local` did), removing either package deletes the other's file, and nothing would say so. The Craft tarballs keep their files under per-app names, so the refusal costs them nothing.
+- **Rewriting `Exec=` in the shipped `.desktop` files to a full path** (what CraftWerk did on Linux). Decided with the user (2026-10-11): the file is in the package's file list, so after the edit `verify` would report it changed and every plan would carry a drift note, for all twelve apps. The Craft file's hook warns instead when `~/.local/bin` is not on `PATH`; most desktops add it at login once the folder exists.
+- **A package key listing files a hook may change** (left out of verify and drift notes), to keep the `.desktop` rewrite. Considered in the same decision: new engine surface and another rule for a case the PATH warning covers. Revisit if a real package needs its hook to edit its own files.
+- **Shipping the Craft Linux hook as a separate script** (`examples/craft/craft-linux-hook.sh`). Decided with the user (2026-10-11): an inline `sh -c` in the package file, so there is nothing extra to place on each machine. Its cost: no braces in the script (hook arguments are templates; `{{`/`}}` would escape them) and at most 1024 bytes.
+- **Allowing only `tmaproduction.blob.core.windows.net` for attestation bundles.** Offered as the default; the user chose `*.blob.core.windows.net` (2026-10-11): a rename on GitHub's side would otherwise break every check, and the bundle is verified cryptographically. The wildcard is for the bundle fetch only, never for assets. See ADR 0014.
+- **A signer-workflow pin as the default attestation identity.** Every package file would need the workflow's path before it counted as attested. Chosen: the `gh --repo` identity, with an optional `verify.signer_workflow`. See ADR 0014.
+- **Counting GitHub's release attestation as "attested".** It says the asset belongs to a release, not how it was built, and needs GitHub's own TUF root. Skipped, not failed. See ADR 0014.
+- **Self-update finding release candidates as drafts, with a token.** Proposed 2026-10-11 as option (b). Every machine would need a token with push access to see drafts. Chosen instead: after its manual run an rc is published as a GitHub pre-release, which self-update considers when the running binary is an rc or with `--prerelease`. See ADR 0015.
+- **Self-update installing only the binary.** Recommended (the binary's folder may be `~/.local/bin`, and the README and licenses then land there too); the user chose the whole archive (2026-10-11): no file filter in the engine, and the folder gets the same files a manual install has. See ADR 0015.

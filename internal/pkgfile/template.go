@@ -192,8 +192,8 @@ func controlValue(_, v string) error {
 	return nil
 }
 
-// capitalise upper-cases the first letter: "photocraft" -> "Photocraft".
-func capitalise(s string) string {
+// capitalize upper-cases the first letter: "photocraft" -> "Photocraft".
+func capitalize(s string) string {
 	r, n := utf8.DecodeRuneInString(s)
 	if n == 0 {
 		return s

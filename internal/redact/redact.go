@@ -22,7 +22,7 @@ func URL(raw string) string {
 	}
 	if strings.Contains(u.Opaque, "@") {
 		// "user:pass@host/x" parses with the user name as the scheme, and "https:user:pass@host"
-		// has no slashes: no userinfo is recognised, so whatever precedes the last @ is dropped.
+		// has no slashes: no userinfo is recognized, so whatever precedes the last @ is dropped.
 		return cutAt("redacted"+raw[strings.LastIndexByte(raw, '@'):], "?#")
 	}
 	u.RawQuery = ""

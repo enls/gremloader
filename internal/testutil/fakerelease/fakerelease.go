@@ -13,7 +13,7 @@
 //	  GET /{owner}/{repo}/releases/tag/{tag}
 //	  GET /{owner}/{repo}/releases/download/{tag}/{name}  (the asset bytes)
 //
-// Behaviour that real clients have to survive can be switched on per test: API rate limiting
+// Behavior that real clients have to survive can be switched on per test: API rate limiting
 // (which, as on GitHub, does not touch the website), injected HTTP failures, and downloads that
 // are cut off part-way.
 //
@@ -211,7 +211,7 @@ func (s *Server) CDNBase() string {
 	return s.cdn.URL + "/cdn"
 }
 
-// Client returns an http.Client that talks to the fake (and honours its TLS-free transport).
+// Client returns an http.Client that talks to the fake (and honors its TLS-free transport).
 func (s *Server) Client() *http.Client { return s.srv.Client() }
 
 // AddRelease publishes a release. The tag must be unique within the repository.
@@ -531,7 +531,7 @@ func (s *Server) toAPI(r *storedRelease) apiRelease {
 	return out
 }
 
-// writeJSON answers with v, adds a weak ETag, and honours If-None-Match with a 304 (which, like
+// writeJSON answers with v, adds a weak ETag, and honors If-None-Match with a 304 (which, like
 // the real service, still counted against the quota in serve()).
 func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	body, err := json.Marshal(v)

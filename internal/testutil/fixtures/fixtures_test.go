@@ -19,7 +19,7 @@ func sha256Hex(b []byte) string {
 }
 
 // The captured zip must still match the hash the release published for it; if it does not, the
-// fixture was altered (or line-ending normalised) and every test built on it is suspect.
+// fixture was altered (or line-ending normalized) and every test built on it is suspect.
 func TestCraftWerkZipMatchesPublishedChecksum(t *testing.T) {
 	sums := string(Read(t, "craftwerk-v0.2.0/SHA256SUMS.txt"))
 	zipBytes := Read(t, "craftwerk-v0.2.0/CraftWerk-Manager.zip")

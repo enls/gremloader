@@ -57,6 +57,14 @@ type deps struct {
 	freeSpace  func(path string) (uint64, error)
 	exeVersion func(path string) (string, error)
 	hooks      engine.HookRunner
+	// attest checks attestations; nil = the sigstore checker. Tests need a passing check for bytes
+	// they made up, which no real bundle can give.
+	attest engine.Attester
+
+	// Self-update (ADR 0015): the running binary (nil = os.Executable) and its version ("" = the
+	// stamped one).
+	selfExe     func() (string, error)
+	selfVersion string
 }
 
 func systemDeps() deps {
@@ -80,6 +88,11 @@ type world struct {
 	paths paths.Paths
 	file  string
 	cfg   *pkgfile.Config
+
+	// Self-update (ADR 0015): the engine keeps its state apart (the run lock and the event log stay
+	// in paths) and knows the running binary. Zero for every other command.
+	engineState string
+	self        string
 }
 
 // getenv applies --home, which stands for GREMLOADER_HOME.
@@ -90,11 +103,17 @@ func (c *call) getenv(k string) string {
 	return c.d.getenv(k)
 }
 
+// env is where paths are looked up: the environment, with --home applied.
+func (c *call) env() paths.Env {
+	env := paths.System()
+	env.Getenv, env.Home = c.getenv, c.d.home
+	return env
+}
+
 // load finds and reads the package file. On failure it has reported the error and returns the
 // exit code.
 func (c *call) load() (*world, int) {
-	env := paths.System()
-	env.Getenv, env.Home = c.getenv, c.d.home
+	env := c.env()
 	p, err := paths.Resolve(env)
 	if err != nil {
 		return nil, c.failf(exitcode.Failed, "%v", err)
@@ -180,11 +199,20 @@ func (c *call) open(w *world) (*session, int) {
 	if c.d.hooks != nil {
 		runner = c.d.hooks
 	}
+	var att engine.Attester = c.attester(w, src, policy)
+	if c.d.attest != nil {
+		att = c.d.attest
+	}
+	ep := w.paths
+	if w.engineState != "" {
+		ep.State = w.engineState
+	}
 	e, err := engine.New(engine.Config{
-		Paths:      w.paths,
+		Paths:      ep,
 		Packages:   w.cfg,
 		Source:     src,
-		Attest:     c.attester(w, src, policy),
+		Attest:     att,
+		Self:       w.self,
 		Fetcher:    client,
 		Events:     log,
 		Hooks:      runner,
@@ -203,7 +231,7 @@ func (c *call) open(w *world) (*session, int) {
 	return &session{world: w, e: e, log: log, lock: lk}, exitcode.OK
 }
 
-// ctx is the run's context: cancelled by the first interrupt.
+// ctx is the run's context: canceled by the first interrupt.
 func (c *call) ctx() context.Context {
 	if c.d.ctx == nil {
 		return context.Background()

@@ -27,7 +27,7 @@ type Package struct {
 	Attestation     string   // "if-present" | "off"
 	SignerWorkflow  string   // the workflow that must have built a release (verify.signer_workflow); "" = any in Repo
 	Strip           archive.Strip
-	Pin             string // a version, normalised; "" = none
+	Pin             string // a version, normalized; "" = none
 	Hold            bool
 	CooldownDays    int
 	CooldownUnknown string // "deny" | "allow"
@@ -102,7 +102,7 @@ func (p *Package) vals(v Values) map[string]string {
 		m = map[string]string{}
 	}
 	m[varName] = p.Name
-	m[varNameCap] = capitalise(p.Name)
+	m[varNameCap] = capitalize(p.Name)
 	m[varOS] = v.Platform.OS
 	m[varArch] = v.Platform.Arch
 	if v.Version != "" {

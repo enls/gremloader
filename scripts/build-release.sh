@@ -4,7 +4,7 @@
 #   scripts/build-release.sh <version> <goos> <goarch> <outdir>
 #
 # Writes <outdir>/gremloader-<version>-<goos>-<goarch>.tar.gz (zip for windows) holding the
-# binary, both licences and the README, and prints its path. Run from the repository root.
+# binary, both licenses and the README, and prints its path. Run from the repository root.
 #
 # The build is meant to be reproducible: no cgo, -trimpath, no VCS stamping by the toolchain, and
 # every timestamp comes from the commit being built, so building the same commit twice gives the

@@ -147,3 +147,62 @@ func TestRestoreIsIdempotentButNotGullible(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A change that failed before replacing a file: the file there is still the saved one, so restore
+// drops the backup and renames nothing over it (it may be a running program, which Windows does
+// not let a rename replace).
+func TestRestoreLeavesTheSavedFileInPlace(t *testing.T) {
+	d := t.TempDir()
+	dst, backup := filepath.Join(d, "app.exe"), filepath.Join(d, "backup")
+	write(t, dst, "saved")
+	write(t, backup, "saved")
+	sum, _, _ := hashFile(dst)
+	renamed := 0
+	osRename = func(from, to string) error { renamed++; return os.Rename(from, to) }
+	t.Cleanup(func() { osRename = os.Rename })
+	if err := restore(backup, dst, sum); err != nil {
+		t.Fatal(err)
+	}
+	if renamed != 0 || fileExists(backup) || readString(t, dst) != "saved" {
+		t.Errorf("renames %d, backup left %v, file holds %q", renamed, fileExists(backup), readString(t, dst))
+	}
+	// Anything else at dst is replaced by the backup, as before.
+	write(t, backup, "saved")
+	write(t, dst, "new version")
+	if err := restore(backup, dst, sum); err != nil || renamed != 1 || readString(t, dst) != "saved" {
+		t.Errorf("err %v, renames %d, file holds %q", err, renamed, readString(t, dst))
+	}
+}
+
+func readString(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p) //nolint:gosec // G304: a test folder
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// The same bytes with another mode (the new version changed only the permissions) are not the
+// saved file: restore puts the backup back.
+func TestRestoreMindsTheMode(t *testing.T) {
+	d := t.TempDir()
+	dst, backup := filepath.Join(d, "tool"), filepath.Join(d, "backup")
+	write(t, dst, "same")
+	write(t, backup, "same")
+	if err := os.Chmod(backup, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	sum, _, _ := hashFile(dst)
+	if err := restore(backup, dst, sum); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm()&0o200 != 0 || fileExists(backup) {
+		t.Errorf("mode %v, backup left %v", fi.Mode(), fileExists(backup))
+	}
+	_ = os.Chmod(dst, 0o644) // let the temporary folder be removed on Windows
+}

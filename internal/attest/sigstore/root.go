@@ -58,7 +58,7 @@ func tufOptions(ctx context.Context, dir string, hc *http.Client, forceCache boo
 }
 
 // onlyTUF wraps hc so every request, redirects included, goes to TUFHost over https, bounded by
-// tufTimeout and cancelled with ctx.
+// tufTimeout and canceled with ctx.
 func onlyTUF(ctx context.Context, hc *http.Client) *http.Client {
 	if hc == nil {
 		hc = http.DefaultClient

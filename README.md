@@ -1,63 +1,39 @@
 # GremLoader
 
-A single-binary package deployer: install software from GitHub releases, OS package managers and
-Docker Compose, keep it updated on a schedule, and keep a log of everything it did.
+A single-binary package deployer: install software from GitHub releases, OS package managers and Docker Compose, keep it updated on a schedule, and keep a log of everything it did.
 
-> **Status: early, expect breaking changes.** GremLoader is at `0.x`. The package-file format, the
-> command line and the on-disk state can all change between releases, and every breaking change is
-> listed in the changelog. Nothing here is promised stable until `1.0`.
+## Status
 
-GremLoader is the successor to [CraftWerk](https://github.com/enls/craftwerk), a prototype that
-installs and updates one fixed set of apps. GremLoader generalises that: a declarative package file,
-exact versions and checksums in a lock file, and a plan-then-apply workflow.
+Early, expect breaking changes. GremLoader is at `0.x`. The package-file format, the command line and the on-disk state can all change between releases, and every breaking change is listed in the changelog. Nothing here is promised stable until `1.0`.
+
+GremLoader is the successor to [CraftWerk](https://github.com/enls/craftwerk), a prototype that installs and updates one fixed set of apps. GremLoader generalizes that: a declarative package file, exact versions and checksums in a lock file, and a plan-then-apply workflow.
 
 ## What it is meant to do
 
-- **One package file** (`gremloader.toml`) describing what you want, plus a lock file of exact
-  versions, URLs and checksums.
+- **One package file** (`gremloader.toml`) describing what you want, plus a lock file of exact versions, URLs and checksums.
 - **Several sources** behind one interface: GitHub releases, apt / dnf / winget, Docker Compose.
-- **Safe by default:** checksums and attestations verified before anything is unpacked, a cool-down
-  before adopting a new release, staged installs with automatic restore on failure.
+- **Safe by default:** checksums and attestations verified before anything is unpacked, a cool-down before adopting a new release, staged installs with automatic restore on failure.
 - **Plan, then apply:** every change is shown before it happens.
-- **A local web UI** embedded in the binary (`gremloader ui`), and the same core for the CLI and for
-  scheduled runs.
+- **A local web UI** embedded in the binary (`gremloader ui`), and the same core for the CLI and for scheduled runs.
 - **Logged:** one JSON event per line, so "what changed and when" is queryable.
 
 ## Current state
 
-Phase 1 (GitHub releases) is built but not released: no binary is published yet, so build it
-from source (below). It installs, updates, rolls back and removes software published as GitHub
-release assets, on Windows and Linux:
+Phase 1 (GitHub releases) is built but not released: no binary is published yet, so build it from source (below). It installs, updates, rolls back and removes software published as GitHub release assets, on Windows and Linux:
 
-- `check`, `plan`, `apply`, `install`, `update`, `remove`, `rollback`, `verify`, `adopt`,
-  `repair`, `pin`/`unpin`, `hold`/`unhold`, `lock`, `explain`, `log`; `--json` on every command,
-  stable exit codes (`gremloader help` lists them all).
-- Downloads are checked against the release's checksum file (or GitHub's digest) before anything
-  is unpacked; a mismatch is refused, never prompted.
-- When a release publishes a build-provenance attestation (GitHub's artifact attestations), it is
-  verified in-process with Sigstore: the download must have been built by a workflow of the
-  package's own repository (optionally a named workflow, `verify.signer_workflow`). A package that
-  was attested is not moved to a version without one unless you say so
-  (`--allow-attestation-regression`). See [ADR 0014](docs/decisions/0014-attestation.md).
-- Every change is journaled: a failure or a crash at any point leaves the old version or the new
-  one, never a mix (`repair` finishes an interrupted run). One version back is kept for `rollback`.
-- Hooks (`post_install`, `post_update`, `pre_remove`, `post_remove`) run as argument lists, never
-  through a shell, with a timeout.
-- [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with
-  notes on moving over from CraftWerk.
+- `check`, `plan`, `apply`, `install`, `update`, `remove`, `rollback`, `verify`, `adopt`, `repair`, `pin`/`unpin`, `hold`/`unhold`, `lock`, `explain`, `log`; `--json` on every command, stable exit codes (`gremloader help` lists them all).
+- Downloads are checked against the release's checksum file (or GitHub's digest) before anything is unpacked; a mismatch is refused, never prompted.
+- When a release publishes a build-provenance attestation (GitHub's artifact attestations), it is verified in-process with Sigstore: the download must have been built by a workflow of the package's own repository (optionally a named workflow, `verify.signer_workflow`). A package that was attested is not moved to a version without one unless you say so (`--allow-attestation-regression`). See [ADR 0014](docs/decisions/0014-attestation.md).
+- Every change is journaled: a failure or a crash at any point leaves the old version or the new one, never a mix (`repair` finishes an interrupted run). One version back is kept for `rollback`.
+- Hooks (`post_install`, `post_update`, `pre_remove`, `post_remove`) run as argument lists, never through a shell, with a timeout.
+- [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with notes on moving over from CraftWerk.
+- `gremloader self-update` replaces the running binary (and the README and licenses beside it) with the newest release of GremLoader, only if its checksum matches and its attestation shows it was built by this repository's release workflow. A release candidate (`0.x.y-rc.n`) also takes newer release candidates; a stable version only takes stable ones unless you pass `--prerelease`. `--check` only looks (exit 2 when there is a newer one). It needs no package file. Keep the binary in a folder you can write to (on Linux `~/.local/bin`, not `/usr/local/bin`). See [ADR 0015](docs/decisions/0015-self-update.md).
 
-Not there yet: updating GremLoader itself (next), the scheduled run, other sources (apt, winget,
-Docker Compose) and the web UI. GitHub's release attestations, and attestations of private
-repositories, are not checked.
+Not there yet: the scheduled run, other sources (apt, winget, Docker Compose) and the web UI. GitHub's release attestations, and attestations of private repositories, are not checked.
 
-What was tested: everything has automated tests, including CraftWerk's behaviours ported as a
-scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real
-one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps
-adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and
-reinstall. Attestations against the real GitHub and Sigstore, on Windows: GitHub's own CLI
-installed fresh and updated with its provenance verified, a wrong `signer_workflow` refused, a
-check that could not be made refused for an attested install, and a Craft app (no attestations)
-installed as before. Not yet on Linux.
+What was tested: everything has automated tests, including CraftWerk's behaviors ported as a scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and reinstall.
+
+Attestations against the real GitHub and Sigstore, on Windows: GitHub's own CLI installed fresh and updated with its provenance verified, a wrong `signer_workflow` refused, a check that could not be made refused for an attested install, and a Craft app (no attestations) installed as before. Not yet on Linux.
 
 ## Building
 
@@ -69,7 +45,7 @@ go build -o gremloader ./cmd/gremloader
 go test ./...
 ```
 
-## Licence
+## License
 
 Dual-licensed under either of
 
@@ -78,6 +54,4 @@ Dual-licensed under either of
 
 at your option.
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
-GremLoader by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
-any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in GremLoader by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

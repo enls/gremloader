@@ -81,7 +81,7 @@ jobs:
         with:
           version: v2.14.0
           # Build the linter with the same toolchain as the project: a prebuilt binary refuses to
-          # analyse code that targets a newer Go than the one it was built with.
+          # analyze code that targets a newer Go than the one it was built with.
           install-mode: goinstall
 
       - name: govulncheck
@@ -119,7 +119,7 @@ jobs:
     needs: [test, lint, secrets]
     runs-on: ubuntu-24.04
     steps:
-      - name: Fail if any job failed or was cancelled
+      - name: Fail if any job failed or was canceled
         run: |
           echo "test=${{ needs.test.result }} lint=${{ needs.lint.result }} secrets=${{ needs.secrets.result }}"
           test "${{ needs.test.result }}" = success
