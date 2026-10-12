@@ -203,10 +203,10 @@ func TestVariables(t *testing.T) {
 	wantProblem(t, err, 0, "command line", "built in")
 }
 
-func TestCapitalise(t *testing.T) {
+func TestCapitalize(t *testing.T) {
 	for in, want := range map[string]string{"photocraft": "Photocraft", "x": "X", "": "", "1abc": "1abc", "éa": "Éa"} {
-		if got := capitalise(in); got != want {
-			t.Errorf("capitalise(%q) = %q", in, got)
+		if got := capitalize(in); got != want {
+			t.Errorf("capitalize(%q) = %q", in, got)
 		}
 	}
 }

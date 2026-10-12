@@ -6,7 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Added
 
-- Project foundation: licences (MIT or Apache-2.0), CI quality gates, release pipeline, test harness (fake release server, injectable clock, captured fixtures).
+- Project foundation: licenses (MIT or Apache-2.0), CI quality gates, release pipeline, test harness (fake release server, injectable clock, captured fixtures).
 - `gremloader version` (and `version -json`).
 - The package file `gremloader.toml` (presets, per-platform assets and folders, variables, hooks), the machine-local override `gremloader.local.toml` (pin, hold, channel, cool-down, enabled) and the lock file `gremloader.lock` (exact release, URL, hash and size per platform).
 - Installing from GitHub releases: the release page and its feed first, GitHub's API only when needed (a token is used for the API only); channels, cool-down, pins and holds.

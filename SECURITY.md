@@ -6,7 +6,7 @@ GremLoader downloads software, unpacks archives, runs hooks and (in later phases
 
 Please **do not open a public issue** for a security problem. Use GitHub's private vulnerability reporting: the repository's **Security** tab, then **Report a vulnerability**.
 
-Include what you found, how to reproduce it, and the version (`gremloader version`). You can expect an acknowledgement within a few days. This is a one-person project, so there is no formal SLA, but reports are taken seriously and credited unless you ask otherwise.
+Include what you found, how to reproduce it, and the version (`gremloader version`). You can expect an acknowledgment within a few days. This is a one-person project, so there is no formal SLA, but reports are taken seriously and credited unless you ask otherwise.
 
 ## Supported versions
 

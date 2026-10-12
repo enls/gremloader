@@ -24,5 +24,5 @@ Write the release pipeline by hand: `scripts/build-release.sh` builds and packag
 
 ## Consequences
 
-- Archive layout is `gremloader-<version>-<os>-<arch>.tar.gz|zip` containing the binary, both licence files and the README.
+- Archive layout is `gremloader-<version>-<os>-<arch>.tar.gz|zip` containing the binary, both license files and the README.
 - `SHA256SUMS.txt` is produced by GNU `sha256sum` (text mode, two spaces). The checksum parser must accept both that and the binary-mode `*name` form that CraftWerk published; both are in the test fixtures.

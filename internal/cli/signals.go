@@ -8,7 +8,7 @@ import (
 	"github.com/enls/gremloader/internal/exitcode"
 )
 
-// interruptible turns interrupts into the behaviour of plan P3-12. The first one cancels the
+// interruptible turns interrupts into the behavior of plan P3-12. The first one cancels the
 // returned context: the engine stops between packages, and a change in progress is undone so
 // that every install is as it was or as it should be. The second one quits at once through exit;
 // the journal makes that safe, and `gremloader repair` finishes or undoes what was in progress.

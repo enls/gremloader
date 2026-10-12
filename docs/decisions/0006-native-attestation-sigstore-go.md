@@ -18,7 +18,7 @@ Verify attestations inside GremLoader using `github.com/sigstore/sigstore-go`, w
 ## Cost
 
 - sigstore-go is the largest dependency in the module graph. That is accepted for this one job, and nothing else may pull it in. It is isolated behind a small `verify` package so it can be swapped.
-- Trust roots must be handled (TUF metadata refresh, offline behaviour). That is designed in Phase 1, not bolted on.
+- Trust roots must be handled (TUF metadata refresh, offline behavior). That is designed in Phase 1, not bolted on.
 
 ## Consequences
 

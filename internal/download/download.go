@@ -5,7 +5,7 @@
 // hosts in Policy.TokenHosts and is removed again by us, not by the HTTP library, when a redirect
 // leaves them; timeouts for connect, TLS and response headers plus a stall timeout on the body;
 // three attempts with exponential backoff and jitter on network errors, 5xx and rate-limit
-// answers, honouring Retry-After up to a cap; and a size cap on every body. Errors never carry a
+// answers, honoring Retry-After up to a cap; and a size cap on every body. Errors never carry a
 // query string, because GitHub's signed asset URLs carry their credential there.
 //
 // Downloads are sequential (one request at a time per Client) and are not resumed: an attempt
@@ -62,14 +62,14 @@ type Config struct {
 	Attempts     int           // default 3
 	StallTimeout time.Duration // default 30 s: no progress for this long fails the attempt
 	BaseBackoff  time.Duration // default 500 ms, doubled per attempt, plus up to 50% jitter
-	MaxRetryWait time.Duration // cap on honouring Retry-After, default 60 s
+	MaxRetryWait time.Duration // cap on honoring Retry-After, default 60 s
 
 	Clock  clock.Clock                                      // default the system clock (Retry-After dates)
 	Sleep  func(ctx context.Context, d time.Duration) error // default a context-aware sleep
 	Jitter func(max time.Duration) time.Duration            // returns a value in [0, max]; default random
 }
 
-// Client performs requests under a Policy. It is safe to share but serialises requests.
+// Client performs requests under a Policy. It is safe to share but serializes requests.
 type Client struct {
 	cfg      Config
 	follow   *http.Client

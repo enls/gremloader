@@ -79,7 +79,7 @@ type command struct {
 }
 
 // commands is filled in init: the help command lists the table, which would otherwise be an
-// initialisation cycle.
+// initialization cycle.
 var commands []*command
 
 func init() {

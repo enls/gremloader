@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	// publicGoodOrg is the organisation of public-good Fulcio's certificates; GitHub's own
+	// publicGoodOrg is the organization of public-good Fulcio's certificates; GitHub's own
 	// instance says "GitHub, Inc.".
 	publicGoodOrg = "sigstore.dev"
 

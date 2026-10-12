@@ -2,7 +2,7 @@
 // GremLoader do and when" is something you can grep, tail, load into jq or query from the CLI.
 //
 // Every message, result and URL is passed through internal/redact first, so signed download links
-// and credentials inside URLs never reach the file. A bare token in free text is not recognised:
+// and credentials inside URLs never reach the file. A bare token in free text is not recognized:
 // callers must not log one. The file rotates by size (5 MiB, keeping 3 by default) so it
 // cannot grow without bound. Writing the log must never be the reason an install fails, so Emit
 // reports errors to the caller, who is expected to note and ignore them.

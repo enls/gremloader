@@ -198,7 +198,7 @@ func tempOf(name string) (base string, ok bool) {
 	return stem[:i], true
 }
 
-// tempName is an unused name beside path, recognisable as GremLoader's.
+// tempName is an unused name beside path, recognizable as GremLoader's.
 func tempName(path string) (string, error) {
 	dir, base := filepath.Split(path)
 	for i := range 100 {

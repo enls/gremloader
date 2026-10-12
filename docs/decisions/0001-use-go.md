@@ -22,7 +22,7 @@ Write GremLoader in Go, as a single statically linked binary per OS and architec
 
 - Dependencies stay few and are justified individually in an ADR line.
 - cgo is off limits. Anything that needs a C compiler is rejected (see "Decided against" in the plan: the webui-dev library).
-- Both licences, `go.sum` and the toolchain version are committed and pinned.
+- Both licenses, `go.sum` and the toolchain version are committed and pinned.
 
 ## Alternatives considered
 

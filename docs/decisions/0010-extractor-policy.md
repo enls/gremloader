@@ -38,7 +38,7 @@ A leading `./` is accepted (tar writes it); a bare `./` is the archive root and 
 
 **Limits** (counted, not trusted): 4 GiB total, 2 GiB per file, 20,000 entries. Declared sizes are used only to refuse early; the real count is enforced as bytes are written. The decompressed stream itself is capped (declared total + headers for the allowed entry count + 1 MiB), so metadata that carries no file cannot expand without bound. A header that lies about size is `size-mismatch` or `corrupt`, naming the entry.
 
-**Empty.** An archive with no files (nothing at all, or only directories) is `empty` (amendment, 2026-10-10, M5): the engine would otherwise swap an empty tree over a working install. A tar with no entries is only its zero end-of-archive blocks and is recognised as a tar for this purpose; a zero-byte file is "not an archive" and says it is empty.
+**Empty.** An archive with no files (nothing at all, or only directories) is `empty` (amendment, 2026-10-10, M5): the engine would otherwise swap an empty tree over a working install. A tar with no entries is only its zero end-of-archive blocks and is recognized as a tar for this purpose; a zero-byte file is "not an archive" and says it is empty.
 
 **Modes.** Files become 0644, or 0755 if any execute bit was set; directories 0755. setuid, setgid and sticky bits never reach the disk. Owners and times are not applied.
 
@@ -58,7 +58,7 @@ A leading `./` is accepted (tar writes it); a bare `./` is the archive root and 
 ## Consequences
 
 - A release that starts publishing a symlink (some Linux tarballs do, for `lib.so.1`) fails to install until the package supports it. That is intended; it will be a new, explicit decision.
-- Case-insensitive collision rejection applies on Linux too, where it is stricter than the file system. Unicode normalisation (NFC vs NFD names) is **not** handled.
+- Case-insensitive collision rejection applies on Linux too, where it is stricter than the file system. Unicode normalization (NFC vs NFD names) is **not** handled.
 - Windows long paths (> 260 characters) are not a concern at the 200-byte path cap, but the *destination prefix* is not counted; the engine must check it.
 
 ## Rejected alternatives
@@ -73,4 +73,4 @@ A leading `./` is accepted (tar writes it); a bare `./` is the archive root and 
 
 Verified by tests (all OSes in CI): every rule above with a hostile archive in zip and tar form, the lying-header and bomb cases with the real byte counter, a failing writer (`ENOSPC`) leaving nothing behind, two fuzz targets (zip, tar.gz) with the invariant that an accepted archive contains only valid paths inside the destination.
 
-**Not verified:** `os.Root` behaviour on Windows beyond the cases pinned in `TestOSRootRefusesToLeaveItsDirectory`; extraction on a case-sensitive NTFS directory; archives with tens of thousands of entries (the cap is tested at 10); Unicode normalisation; behaviour under antivirus scanning of the destination.
+**Not verified:** `os.Root` behavior on Windows beyond the cases pinned in `TestOSRootRefusesToLeaveItsDirectory`; extraction on a case-sensitive NTFS directory; archives with tens of thousands of entries (the cap is tested at 10); Unicode normalization; behavior under antivirus scanning of the destination.

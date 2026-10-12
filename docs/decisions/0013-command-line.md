@@ -4,7 +4,7 @@ Status: accepted (2026-10-11)
 
 ## Context
 
-M6 puts a command line on the engine (ADR 0012) and runs package hooks for real. The plan fixes the command table, the global flags and the exit codes (E.4), the hook rules (E.3.8) and the interrupt behaviour (P3-12). It leaves open how confirmation, JSON output, the lock commands and the hook runner behave in detail. Scripts and the scheduled run will depend on these, so they are written down here. Packages: `internal/cli`, `internal/hooks`, and in the engine `lockgen.go` and `Forget`.
+M6 puts a command line on the engine (ADR 0012) and runs package hooks for real. The plan fixes the command table, the global flags and the exit codes (E.4), the hook rules (E.3.8) and the interrupt behavior (P3-12). It leaves open how confirmation, JSON output, the lock commands and the hook runner behave in detail. Scripts and the scheduled run will depend on these, so they are written down here. Packages: `internal/cli`, `internal/hooks`, and in the engine `lockgen.go` and `Forget`.
 
 ## Decision
 

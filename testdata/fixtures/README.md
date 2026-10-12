@@ -1,6 +1,6 @@
 # Test fixtures
 
-Bytes captured from real releases, so the parsers and extractor are tested against what the world actually publishes and not against what we assume it does. These files are marked `-text` in `.gitattributes`: Git must never normalise them.
+Bytes captured from real releases, so the parsers and extractor are tested against what the world actually publishes and not against what we assume it does. These files are marked `-text` in `.gitattributes`: Git must never normalize them.
 
 | Path | Origin | Notes |
 |---|---|---|

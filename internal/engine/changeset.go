@@ -226,7 +226,7 @@ func (x *executor) rmdir(rel string) error {
 }
 
 // undo reverses a journal: every record in reverse order. It is idempotent, so an undo that was
-// itself interrupted can simply be run again: a backup already moved back is recognised by its hash
+// itself interrupted can simply be run again: a backup already moved back is recognized by its hash
 // at the destination. Every record is attempted even after a failure, so as much as possible is
 // restored; the errors are returned together and the journal is kept for repair.
 func (e *Engine) undo(l *journal.Log) error {

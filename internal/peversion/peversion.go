@@ -4,7 +4,7 @@
 // The value is the one Explorer and PowerShell show as ProductVersion
 // ((Get-Item app.exe).VersionInfo.ProductVersion, what CraftWerk read): the ProductVersion string
 // of the version resource, and only when there is none the four numbers of the fixed version
-// block. Real Craft apps report "0.6.0" and 0.6.0.0 respectively. The caller normalises the
+// block. Real Craft apps report "0.6.0" and 0.6.0.0 respectively. The caller normalizes the
 // result with ver.ParseLoose, which accepts the four-part form when the fourth part is 0.
 package peversion
 

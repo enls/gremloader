@@ -231,7 +231,7 @@ func (c *call) open(w *world) (*session, int) {
 	return &session{world: w, e: e, log: log, lock: lk}, exitcode.OK
 }
 
-// ctx is the run's context: cancelled by the first interrupt.
+// ctx is the run's context: canceled by the first interrupt.
 func (c *call) ctx() context.Context {
 	if c.d.ctx == nil {
 		return context.Background()

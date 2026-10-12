@@ -6,7 +6,7 @@ A single-binary package deployer: install software from GitHub releases, OS pack
 
 Early, expect breaking changes. GremLoader is at `0.x`. The package-file format, the command line and the on-disk state can all change between releases, and every breaking change is listed in the changelog. Nothing here is promised stable until `1.0`.
 
-GremLoader is the successor to [CraftWerk](https://github.com/enls/craftwerk), a prototype that installs and updates one fixed set of apps. GremLoader generalises that: a declarative package file, exact versions and checksums in a lock file, and a plan-then-apply workflow.
+GremLoader is the successor to [CraftWerk](https://github.com/enls/craftwerk), a prototype that installs and updates one fixed set of apps. GremLoader generalizes that: a declarative package file, exact versions and checksums in a lock file, and a plan-then-apply workflow.
 
 ## What it is meant to do
 
@@ -27,11 +27,11 @@ Phase 1 (GitHub releases) is built but not released: no binary is published yet,
 - Every change is journaled: a failure or a crash at any point leaves the old version or the new one, never a mix (`repair` finishes an interrupted run). One version back is kept for `rollback`.
 - Hooks (`post_install`, `post_update`, `pre_remove`, `post_remove`) run as argument lists, never through a shell, with a timeout.
 - [`examples/craft/`](examples/craft/) is a working package file for the twelve Craft apps, with notes on moving over from CraftWerk.
-- `gremloader self-update` replaces the running binary (and the README and licences beside it) with the newest release of GremLoader, only if its checksum matches and its attestation shows it was built by this repository's release workflow. A release candidate (`0.x.y-rc.n`) also takes newer release candidates; a stable version only takes stable ones unless you pass `--prerelease`. `--check` only looks (exit 2 when there is a newer one). It needs no package file. Keep the binary in a folder you can write to (on Linux `~/.local/bin`, not `/usr/local/bin`). See [ADR 0015](docs/decisions/0015-self-update.md).
+- `gremloader self-update` replaces the running binary (and the README and licenses beside it) with the newest release of GremLoader, only if its checksum matches and its attestation shows it was built by this repository's release workflow. A release candidate (`0.x.y-rc.n`) also takes newer release candidates; a stable version only takes stable ones unless you pass `--prerelease`. `--check` only looks (exit 2 when there is a newer one). It needs no package file. Keep the binary in a folder you can write to (on Linux `~/.local/bin`, not `/usr/local/bin`). See [ADR 0015](docs/decisions/0015-self-update.md).
 
 Not there yet: the scheduled run, other sources (apt, winget, Docker Compose) and the web UI. GitHub's release attestations, and attestations of private repositories, are not checked.
 
-What was tested: everything has automated tests, including CraftWerk's behaviours ported as a scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and reinstall.
+What was tested: everything has automated tests, including CraftWerk's behaviors ported as a scenario suite, and CI runs them on Windows and Linux, against a fake GitHub. Against the real one it has been run on Windows only, on a copy of a real CraftWerk install: all twelve apps adopted and verified against their releases, a downgrade, rollbacks both ways, a remove and reinstall.
 
 Attestations against the real GitHub and Sigstore, on Windows: GitHub's own CLI installed fresh and updated with its provenance verified, a wrong `signer_workflow` refused, a check that could not be made refused for an attested install, and a Craft app (no attestations) installed as before. Not yet on Linux.
 

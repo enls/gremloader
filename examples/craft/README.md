@@ -46,4 +46,4 @@ Things that change:
 - **`register-apps.ps1` stays** where CraftWerk put it (`C:\CraftWerk\_update\`); the package file calls it after every change. Remove those `post_*` lines if you don't want file types touched.
 - **Linux:** CraftWerk rewrote the `Exec=` line of each `.desktop` file to a full path. GremLoader leaves the files as released (so `verify` can check them) and warns instead when `~/.local/bin` is not on `PATH`; most desktops add it at login once the folder exists.
 
-Not ported: CraftWerk's report-only `.msi` list (it was empty) and the scheduled-run behaviour above.
+Not ported: CraftWerk's report-only `.msi` list (it was empty) and the scheduled-run behavior above.

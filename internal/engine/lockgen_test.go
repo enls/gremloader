@@ -181,7 +181,7 @@ func TestLockRefusesWhatItCannotTrust(t *testing.T) {
 }
 
 // The lock is shared: the installed version does not matter, an explicit one does.
-func TestLockIgnoresWhatIsInstalledAndHonoursWant(t *testing.T) {
+func TestLockIgnoresWhatIsInstalledAndHonorsWant(t *testing.T) {
 	r := atV1(t)
 	// appFile has one asset template for every platform: it is locked for this machine's.
 	entries, it := lockOf(t, r.engine(), LockOptions{})
