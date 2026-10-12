@@ -312,3 +312,41 @@ func TestRemoveAside(t *testing.T) {
 		t.Errorf("left %v, want %v", left, want)
 	}
 }
+
+// Replaced by hand in the same folder with the newest version: up to date, not reinstalled.
+func TestSelfUpdateBinaryReplacedInPlace(t *testing.T) {
+	r := selfRig(t, linuxAmd64, "0.0.1")
+	r.publishSelf("0.0.2", false, 10)
+	if code, it := r.selfItem("--yes"); code != exitcode.OK {
+		t.Fatalf("exit %d %+v", code, it)
+	}
+	r.publishSelf("0.0.3", false, 1)
+	noErr(t, os.WriteFile(r.selfExe, []byte("gremloader 0.0.3"), 0o600))
+	r.selfVersion = "0.0.3"
+	if code, it := r.selfItem("--yes"); code != exitcode.OK || it.Action != "" || it.From != "0.0.3" {
+		t.Errorf("exit %d %+v", code, it)
+	}
+}
+
+// An unfinished self-update is dealt with first: a journal that was never begun is removed and
+// the update goes ahead; a damaged one stops the run (exit 6) with nothing changed.
+func TestSelfUpdateUnfinishedJournal(t *testing.T) {
+	r := selfRig(t, winAmd64, "0.0.1")
+	r.publishSelf("0.0.2", false, 10)
+	jdir := filepath.Join(r.stateDir(), "self", "journal", selfName)
+	noErr(t, os.MkdirAll(jdir, 0o700))
+	noErr(t, os.WriteFile(filepath.Join(jdir, "undo.jsonl"), nil, 0o600))
+	code, res := r.runJSON("self-update", "--yes")
+	if code != exitcode.OK || r.binary() != "gremloader 0.0.2" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "repaired first") {
+		t.Fatalf("never begun: exit %d, binary %q, warnings %v", code, r.binary(), res.Warnings)
+	}
+
+	r = selfRig(t, winAmd64, "0.0.1")
+	r.publishSelf("0.0.2", false, 10)
+	jdir = filepath.Join(r.stateDir(), "self", "journal", selfName)
+	noErr(t, os.MkdirAll(jdir, 0o700))
+	noErr(t, os.WriteFile(filepath.Join(jdir, "undo.jsonl"), []byte("not a journal\n"), 0o600))
+	if code, _ := r.selfItem("--yes"); code != exitcode.NeedsRepair || r.binary() != "gremloader 0.0.1" {
+		t.Errorf("damaged: exit %d, binary %q", code, r.binary())
+	}
+}

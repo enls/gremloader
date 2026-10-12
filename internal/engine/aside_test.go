@@ -249,3 +249,57 @@ func TestSelfCrashAtEveryPointIsRepaired(t *testing.T) {
 		t.Errorf("saw aside=%v old=%v new=%v", sawAside, sawOld, sawNew)
 	}
 }
+
+// asideSelf reuses a free aside name, skips one it cannot free, and fails when none is left.
+func TestAsideNames(t *testing.T) {
+	d := t.TempDir()
+	exe := filepath.Join(d, "gremloader.exe")
+	write(t, exe, "running")
+	write(t, exe+".old", "stale")
+	if err := asideSelf(exe); err != nil {
+		t.Fatal(err)
+	}
+	if readString(t, exe+".old") != "running" || fileExists(exe+".old.1") || fileExists(exe) {
+		t.Fatal("a free .old was not reused")
+	}
+	// A name that cannot be removed (a folder with something in it) is skipped.
+	if err := os.Remove(exe + ".old"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(exe+".old", "x"), "in the way")
+	write(t, exe, "running 2")
+	if err := asideSelf(exe); err != nil || readString(t, exe+".old.1") != "running 2" {
+		t.Fatalf("err %v", err)
+	}
+	// None left: the binary stays where it is.
+	for _, n := range AsideNames(exe) {
+		if err := os.RemoveAll(n); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(n, "x"), "in the way")
+	}
+	write(t, exe, "running 3")
+	if err := asideSelf(exe); err == nil || !strings.Contains(err.Error(), "in use") || readString(t, exe) != "running 3" {
+		t.Fatalf("err %v", err)
+	}
+}
+
+// When the running binary cannot be moved aside, the change fails and undoes itself: the old
+// version stays.
+func TestAsideFailureStopsTheChange(t *testing.T) {
+	asideRunning = true
+	t.Cleanup(func() { asideRunning = runtime.GOOS == "windows" })
+	r := atV1(t)
+	r.self = filepath.Join(r.dir(), "app.exe")
+	for _, n := range AsideNames(r.self) {
+		write(t, filepath.Join(n, "x"), "in the way")
+	}
+	it := item(t, r.apply(r.engine(), Request{}), "app")
+	if it.Result != ResultFailed || it.Err == nil || !strings.Contains(it.Err.Error(), "aside") {
+		t.Fatalf("%s: %v", it.Result, it.Err)
+	}
+	if readString(t, r.self) != "app v1" || r.state().Packages["app"].Version != "1.0.0" {
+		t.Errorf("app.exe holds %q, state says %s", readString(t, r.self), r.state().Packages["app"].Version)
+	}
+	r.assertClean()
+}
