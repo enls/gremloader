@@ -23,3 +23,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ### Fixed
 
 - Undoing a change that failed before a file was replaced no longer renames the backup over that file. When it was a running program on Windows, that rename was refused and the package was left needing repair, although nothing had changed.
+
+### Security
+
+- `google.golang.org/grpc` (pulled in by sigstore-go) raised from 1.83.1 to 1.83.2 for GHSA-2v4p-qf9q-27wj, a crash in gRPC servers using xDS. GremLoader runs no gRPC server and govulncheck found the code unreachable; the bump clears the alert.
