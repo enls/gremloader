@@ -1,8 +1,6 @@
 # Architecture decision records
 
-Short records of decisions that are hard to reverse or easy to forget the reason for. One file per
-decision, numbered, never rewritten: a changed decision gets a new record that supersedes the old
-one. Turned-down ideas are filed in [../decided-against.md](../decided-against.md).
+Short records of decisions that are hard to reverse or easy to forget the reason for. One file per decision, numbered, never rewritten: a changed decision gets a new record that supersedes the old one. Turned-down ideas are filed in [../decided-against.md](../decided-against.md).
 
 | # | Decision |
 |---|---|
