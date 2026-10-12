@@ -279,7 +279,11 @@ func TestSelfUpdateFollowsTheRunningBinary(t *testing.T) {
 	noErr(t, os.MkdirAll(filepath.Dir(r.selfExe), 0o755))
 	noErr(t, os.WriteFile(r.selfExe, []byte("gremloader 0.0.2"), 0o600))
 	r.publishSelf("0.0.3", false, 1)
-	if code, it := r.selfItem("--yes"); code != exitcode.OK || it.From != "0.0.2" || it.Dir != filepath.Dir(r.selfExe) {
+	// Self-update works in the binary's real folder: links resolved, and on Windows a short 8.3 name
+	// (the CI runner's temporary folder is C:\Users\RUNNER~1\...) spelled out.
+	want, err := filepath.EvalSymlinks(filepath.Dir(r.selfExe))
+	noErr(t, err)
+	if code, it := r.selfItem("--yes"); code != exitcode.OK || it.From != "0.0.2" || it.Dir != want {
 		t.Fatalf("exit %d %+v", code, it)
 	}
 	if r.binary() != "gremloader 0.0.3" {
